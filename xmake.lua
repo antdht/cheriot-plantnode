@@ -1,4 +1,6 @@
 set_project("CHERIoT smart plant node")
+
+-- Has to point to the sdk provided on the `CHERIoT-Platform/cheriot-rtos` repo
 sdkdir = "../cheriot-rtos/sdk"
 includes(sdkdir)
 set_toolchains("cheriot-clang")
@@ -7,10 +9,10 @@ option("board")
 set_default("sail")
 
 compartment("uart")
-add_files("uart.cc")
+add_files("src/uart.cc")
 
 compartment("hello")
-add_files("hello.cc")
+add_files("src/hello.cc")
 
 -- Firmware image for the example.
 firmware("plantnode")
