@@ -39,3 +39,7 @@
 
 # debug information files
 *.dwo
+
+# CHERIoT-specific 
+.xmake/*
+build/*
