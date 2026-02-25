@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-global, lowercase-global
+
 set_project("CHERIoT smart plant node")
 
 -- Has to point to the sdk provided on the `CHERIoT-Platform/cheriot-rtos` repo
