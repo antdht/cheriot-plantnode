@@ -3,69 +3,81 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build](https://img.shields.io/badge/build-xmake-green)](https://xmake.io/)
 
-A secure embedded architecture for plant monitoring systems, implemented as a CHERIoT-RTOS application. Leverages CHERI capabilities for compartmentalized IoT control of sensors (soil moisture, humidity, temperature) and actuators.
-
-## Features
-- Capability-based security for sensor isolation.
-- Real-time monitoring and control.
-- Simulator support for development.
+A secure embedded architecture for plant monitoring systems, implemented as a CHERIoT-RTOS application targeting the [Sonata board](https://github.com/lowRISC/sonata-system). Leverages CHERI capabilities for compartmentalized IoT communication (MQTT over TLS).
 
 ## Prerequisites
-Before building, follow the official [CHERIoT Getting Started Guide](https://github.com/CHERIoT-Platform/cheriot-rtos/blob/main/docs/GettingStarted.md) to set up the toolchain and simulator.
 
-You should add the simulator to your path. 
+This project depends on [`sonata-software`](https://github.com/lowRISC/sonata-software) for the CHERIoT SDK, network stack, and build toolchain. Clone it as a sibling directory:
 
-Verify with:
-
-```bash
-cheriot-simulator
-
-# Should normally produce 
-No elf file provided.
-Usage: cheriot_sim [options] <elf_file> [<elf_file> ...]
+```
+root/
+├── sonata-software/   # provides SDK, network stack, nix dev environment
+└── cheriot-plantnode/ # this project
 ```
 
-## Build and Run
-Quick summary of what is explained in the getting started guide, if you are familiar with it, you can skip this part.
-
-But, as a quick reminder: as explained in the getting started guide, the build system requires a configure step and a build step:
-
-### Configure
-Use `xmake` to configure the project: 
+Enter the `sonata-software` nix development environment, which provides `cheriot-clang`, `xmake`, `llvm-strip`, `uf2conv`, and all other required tools:
 
 ```bash
-# For cheriot simulator (defaults for the sail board)
-xmake config --sdk=../builds/cheriot-llvm -m debug
-
-# For the sonata board
-xmake config --sdk=../builds/cheriot-llvm -m release --board=sonata
+cd sonata-software
+nix develop
 ```
 
-In the getting started guide, the `--sdk` in more commonly referred to as `/cheriot-tools/`
+## Build
 
-### Build
+From inside the nix shell, run xmake **pointing at this project**:
+
 ```bash
-xmake build 
+# from the sonata-software/ directory (while inside nix develop)
+xmake -P ../cheriot-plantnode
 ```
 
-The final step of the build should look like this 
+This compiles the firmware and automatically produces three UF2 images (one per flash slot) under `cheriot-plantnode/build/uf2/`:
 
-`[ 96%]: linking firmware build/cheriot/cheriot/<release|debug>/plantnode`
+```
+build/uf2/
+├── plantnode.slot1.uf2   # base address 0x00000000
+├── plantnode.slot2.uf2   # base address 0x10000000
+└── plantnode.slot3.uf2   # base address 0x20000000
+```
 
-### Run 
-Whether you configured your project the board `sail` (the default one) or the `sonata` one, `xmake run` will execute accordingly. In the first case it will run you project with the simulator and in the latest, it will compile the source code and try to push it directly to the plugged sonata board.
+## Flash to the Sonata board
 
-Typically, you'd simply type:
+Plug in the Sonata board over USB. It will appear as a USB mass-storage drive. Copy the UF2 for the desired slot to the drive:
 
 ```bash
-xmake run 
+user@computer $ cp ./build/uf2/plantnode.slot2.uf2 /run/media/$USER/SONATA/firmware.uf2
+```
+
+The board reboots automatically and boots from the selected slot. Use the slot-select switch on the board to choose which slot to run at startup.
+
+## Serial output
+
+Debug output is printed over UART at 115200 baud. Connect with any serial terminal:
+
+```bash
+picocom -b 921600 /dev/ttyUSB1   # adjust device as needed
+# or
+screen /dev/ttyUSB1 921600
+```
+
+On a successful start you should see:
+
+```
+PlantNode: === PlantNode firmware starting ===
+PlantNode MQTT: Starting network stack...
+PlantNode MQTT: Network stack started.
+PlantNode MQTT: Synchronising time via SNTP...
+...
 ```
 
 ## Project Structure
+
 ```
-cheriot-plantnode
-├── src/              # Application source 
-├── xmake.lua         # Build configuration
+cheriot-plantnode/
+├── src/               # Application source
+├── build/
+│   └── uf2/           # generated UF2 images (after build)
+├── xmake.lua          # build configuration
 ├── README.md
 └── LICENSE
 ```
