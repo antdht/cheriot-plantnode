@@ -1,0 +1,64 @@
+// Copyright CHERIoT Contributors.
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+#include "plantnode_types.h"
+#include <compartment.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/**
+ * Initialise the network stack, synchronise time via SNTP, and connect to the
+ * MQTT broker. Displays "Connecting to network…" then "Connected!" on the LCD.
+ * Must be called once before any publish/poll calls.
+ *
+ * This is the ONLY compartment permitted to call into the network driver
+ * compartments (TCPIP, Firewall, MQTT).
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms") comms_connect();
+
+/**
+ * Publish a raw payload to an arbitrary MQTT topic.
+ * Prefer the typed wrappers below when the destination is known.
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms") comms_publish(const char *topic,
+                                               const void *payload,
+                                               size_t      payload_len);
+
+/**
+ * Publish a sensor reading to the monitoring station topic
+ * (plantnode/telemetry). Called by core_logic after data_read_sensors().
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms")
+  comms_publish_telemetry(const SensorReading *reading);
+
+/**
+ * Publish a signed attestation blob to the remote verifier topic
+ * (plantnode/attestation). Called by core_logic after attestation_sign().
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms")
+  comms_publish_attestation(const uint8_t *sig, size_t sig_len);
+
+/**
+ * Drive the MQTT event loop (process ACKs and incoming messages).
+ * Should be called regularly from the core logic loop.
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms") comms_poll();
+
+/**
+ * Gracefully disconnect from the MQTT broker.
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms") comms_disconnect();
