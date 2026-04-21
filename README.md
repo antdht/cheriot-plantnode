@@ -31,6 +31,11 @@ From inside the nix shell, run xmake **pointing at this project**:
 xmake -P ../cheriot-plantnode
 ```
 
+> **IPv4-only networks:** disable IPv6 before building to avoid connection issues:
+> ```bash
+> xmake config -P ../cheriot-plantnode --IPv6=n
+> ```
+
 This compiles the firmware and automatically produces three UF2 images (one per flash slot) under `cheriot-plantnode/build/uf2/`:
 
 ```
