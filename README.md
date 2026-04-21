@@ -50,7 +50,7 @@ build/uf2/
 Plug in the Sonata board over USB. It will appear as a USB mass-storage drive. Copy the UF2 for the desired slot to the drive:
 
 ```bash
-user@computer $ cp ./build/uf2/plantnode.slot2.uf2 /run/media/$USER/SONATA/firmware.uf2
+cp ./build/uf2/plantnode.slot2.uf2 /run/media/$USER/SONATA/firmware.uf2
 ```
 
 The board reboots automatically and boots from the selected slot. Use the slot-select switch on the board to choose which slot to run at startup.
