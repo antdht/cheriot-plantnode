@@ -57,7 +57,7 @@ The board reboots automatically and boots from the selected slot. Use the slot-s
 
 ## Serial output
 
-Debug output is printed over UART at 115200 baud. Connect with any serial terminal:
+Debug output is printed over UART at 921600 baud. Connect with any serial terminal:
 
 ```bash
 picocom -b 921600 /dev/ttyUSB1   # adjust device as needed
