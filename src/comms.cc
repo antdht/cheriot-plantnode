@@ -20,18 +20,35 @@
 #include <thread.h>
 #include <tick_macros.h>
 
-#include "mosquitto.org.h"
+// ── MQTT broker selection ──────────────────────────────────────────────────
+// Define MQTT_USE_LOCAL_BROKER at build time to connect to a local broker
+// instead of test.mosquitto.org. The local broker's CA is in local_ip.h.
+// Override MQTT_LOCAL_BROKER_HOST / MQTT_LOCAL_BROKER_PORT as needed.
+#ifdef MQTT_USE_LOCAL_BROKER
+#	include "local_ip.h"
+#	ifndef MQTT_LOCAL_BROKER_HOST
+#		define MQTT_LOCAL_BROKER_HOST "192.168.1.100"
+#	endif
+#	ifndef MQTT_LOCAL_BROKER_PORT
+#		define MQTT_LOCAL_BROKER_PORT 8883
+#	endif
+DECLARE_AND_DEFINE_CONNECTION_CAPABILITY(MosquittoOrgMQTT,
+                                         MQTT_LOCAL_BROKER_HOST,
+                                         MQTT_LOCAL_BROKER_PORT,
+                                         ConnectionTypeTCP);
+#else
+#	include "mosquitto.org.h"
+DECLARE_AND_DEFINE_CONNECTION_CAPABILITY(MosquittoOrgMQTT,
+                                         "test.mosquitto.org",
+                                         8883,
+                                         ConnectionTypeTCP);
+#endif
 
 using CHERI::Capability;
 using Debug            = ConditionalDebug<true, "PlantNode Comms">;
 constexpr bool UseIPv6 = CHERIOT_RTOS_OPTION_IPv6;
 
 // ── MQTT infrastructure ────────────────────────────────────────────────────
-
-DECLARE_AND_DEFINE_CONNECTION_CAPABILITY(MosquittoOrgMQTT,
-                                         "test.mosquitto.org",
-                                         8883,
-                                         ConnectionTypeTCP);
 
 // Separate heap quota for all network allocations.
 DECLARE_AND_DEFINE_ALLOCATOR_CAPABILITY(mqttMalloc, 32 * 1024);
