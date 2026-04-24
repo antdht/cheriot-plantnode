@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "policy_engine.h"
+#include "display/display_policy.h"
 #include "drivers/pump_driver.h"
 #include <debug.hh>
 #include <errno.h>
@@ -31,6 +32,7 @@ PolicyOutcome __cheri_compartment("policy_engine")
 	if (reading->moisture_raw < s_moisture_low)
 	{
 		Debug::log("Moisture too low ({}), activating pump.", reading->moisture_raw);
+		display_pump_activation(true);
 		// TODO: pump_on();
 		return PolicyOutcome::ActivatePump;
 	}
@@ -38,6 +40,7 @@ PolicyOutcome __cheri_compartment("policy_engine")
 	if (reading->moisture_raw > s_moisture_high)
 	{
 		Debug::log("Moisture sufficient ({}), deactivating pump.", reading->moisture_raw);
+		display_pump_activation(false);
 		// TODO: pump_off();
 		return PolicyOutcome::DeactivatePump;
 	}

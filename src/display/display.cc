@@ -18,6 +18,47 @@ static SonataLcd &lcd()
 	return instance;
 }
 
+// ── String formatting helpers ─────────────────────────────────────────────
+
+static char *append_str(char *p, const char *s)
+{
+	while (*s)
+	{
+		*p++ = *s++;
+	}
+	return p;
+}
+
+static char *append_uint(char *p, unsigned v)
+{
+	char tmp[10];
+	int  n = 0;
+	do
+	{
+		tmp[n++] = '0' + (v % 10);
+		v /= 10;
+	} while (v);
+	for (int i = n - 1; i >= 0; i--)
+	{
+		*p++ = tmp[i];
+	}
+	return p;
+}
+
+// Formats val/divisor with one decimal place (e.g. 235/10 → "23.5").
+static char *append_decimal(char *p, int val, unsigned divisor)
+{
+	if (val < 0)
+	{
+		*p++ = '-';
+		val  = -val;
+	}
+	p    = append_uint(p, (unsigned)val / divisor);
+	*p++ = '.';
+	p    = append_uint(p, (unsigned)val % divisor);
+	return p;
+}
+
 // ── Shared layout helpers ─────────────────────────────────────────────────
 
 static void draw_title_bar(SonataLcd &l, Size res)
@@ -73,21 +114,90 @@ void __cheri_compartment("display") display_connected_network()
 void __cheri_compartment("display")
   display_sensor_readings(const SensorReading *reading)
 {
-	// TODO: implement sensor readings display
-	// Layout sketch:
-	//   Title bar
-	//   "Temp:  XX.X C"
-	//   "Moisture: XXX%"
-	(void)reading;
+	auto &l   = lcd();
+	auto  res = l.resolution();
+
+	l.clean(Color::Black);
+	draw_title_bar(l, res);
+
+	if (!reading || !reading->valid)
+	{
+		l.draw_str({4, 30},
+		           "No sensor data",
+		           Color::Black,
+		           Color::White,
+		           Font::LucidaConsole_10pt);
+		return;
+	}
+
+	char  line[24];
+	char *p;
+
+	// "Temp: 23.5 C"
+	p  = line;
+	p  = append_str(p, "Temp: ");
+	p  = append_decimal(p, reading->temperature_cx10, 10);
+	p  = append_str(p, " C");
+	*p = '\0';
+	l.draw_str(
+	  {4, 30}, line, Color::Black, Color::White, Font::LucidaConsole_10pt);
+
+	// "Hum:  45.5 %"
+	p  = line;
+	p  = append_str(p, "Hum:  ");
+	p  = append_decimal(p, (int)reading->humidity_rx10, 10);
+	p  = append_str(p, " %");
+	*p = '\0';
+	l.draw_str(
+	  {4, 46}, line, Color::Black, Color::White, Font::LucidaConsole_10pt);
+
+	// "Moist: 1234"
+	p  = line;
+	p  = append_str(p, "Moist: ");
+	p  = append_uint(p, reading->moisture_raw);
+	*p = '\0';
+	l.draw_str(
+	  {4, 62}, line, Color::Black, Color::White, Font::LucidaConsole_10pt);
 }
 
 // ── policy_engine ─────────────────────────────────────────────────────────
 
 void __cheri_compartment("display") display_pump_activation(bool activating)
 {
-	// TODO: implement pump status display
-	// Layout sketch:
-	//   Title bar
-	//   Red/Green banner: "Watering..." / "Watering done"
-	(void)activating;
+	auto &l   = lcd();
+	auto  res = l.resolution();
+
+	l.clean(Color::Black);
+	draw_title_bar(l, res);
+
+	// Coloured status banner directly below the title bar.
+	Color banner = activating ? Color::Red : Color::Green;
+	l.fill_rect({0, 20, res.width, 18}, banner);
+
+	if (activating)
+	{
+		l.draw_str({4, 48},
+		           "Currently",
+		           Color::Black,
+		           Color::White,
+		           Font::LucidaConsole_10pt);
+		l.draw_str({4, 64},
+		           "watering...",
+		           Color::Black,
+		           Color::White,
+		           Font::LucidaConsole_10pt);
+	}
+	else
+	{
+		l.draw_str({4, 48},
+		           "Watering",
+		           Color::Black,
+		           Color::White,
+		           Font::LucidaConsole_10pt);
+		l.draw_str({4, 64},
+		           "finished!",
+		           Color::Black,
+		           Color::White,
+		           Font::LucidaConsole_10pt);
+	}
 }

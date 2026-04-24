@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "data_processing.h"
+#include "display/display_data.h"
 #include "drivers/moisture_sensor.h"
 #include "drivers/temperature_sensor.h"
 #include <debug.hh>
@@ -43,5 +44,7 @@ int __cheri_compartment("data_processing")
 	           out->moisture_raw,
 	           out->temperature_cx10,
 	           out->humidity_rx10);
+
+	display_sensor_readings(out);
 	return 0;
 }
