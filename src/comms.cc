@@ -24,10 +24,13 @@
 // Define MQTT_USE_LOCAL_BROKER at build time to connect to a local broker
 // instead of test.mosquitto.org. The local broker's CA is in local_ip.h.
 // Override MQTT_LOCAL_BROKER_HOST / MQTT_LOCAL_BROKER_PORT as needed.
+
+#define MQTT_USE_LOCAL_BROKER
+
 #ifdef MQTT_USE_LOCAL_BROKER
 #	include "local_ip.h"
 #	ifndef MQTT_LOCAL_BROKER_HOST
-#		define MQTT_LOCAL_BROKER_HOST "192.168.1.100"
+#		define MQTT_LOCAL_BROKER_HOST "mos.waos.space"
 #	endif
 #	ifndef MQTT_LOCAL_BROKER_PORT
 #		define MQTT_LOCAL_BROKER_PORT 8883

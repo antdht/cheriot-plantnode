@@ -20,6 +20,11 @@ void __cheri_compartment("core_logic") core_entry()
 
 	comms_connect();
 
+	{
+		static const char debugMsg[] = "plantnode-online";
+		comms_publish("test/plant", debugMsg, sizeof(debugMsg) - 1);
+	}
+
 	// TODO: configure policy thresholds from persistent storage
 
 	while (true)
