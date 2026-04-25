@@ -61,10 +61,10 @@ static char *append_decimal(char *p, int val, unsigned divisor)
 
 // ── Shared layout helpers ─────────────────────────────────────────────────
 
-static void draw_title_bar(SonataLcd &l, Size res)
+static void draw_title_bar(SonataLcd &l, Size res, Color bg = Color::Blue)
 {
-	l.fill_rect({0, 0, res.width, 18}, Color::Blue);
-	l.draw_str({4, 3}, "PlantNode", Color::Blue, Color::White, Font::M5x7_16pt);
+	l.fill_rect({0, 0, res.width, 18}, bg);
+	l.draw_str({4, 3}, "PlantNode", bg, Color::White, Font::M5x7_16pt);
 }
 
 // ── comms ─────────────────────────────────────────────────────────────────
@@ -168,11 +168,7 @@ void __cheri_compartment("display") display_pump_activation(bool activating)
 	auto  res = l.resolution();
 
 	l.clean(Color::Black);
-	draw_title_bar(l, res);
-
-	// Coloured status banner directly below the title bar.
-	Color banner = activating ? Color::Red : Color::Green;
-	l.fill_rect({0, 20, res.width, 18}, banner);
+	draw_title_bar(l, res, activating ? Color::Red : Color::Green);
 
 	if (activating)
 	{
