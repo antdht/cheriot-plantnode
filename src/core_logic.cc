@@ -1,9 +1,9 @@
 // Copyright CHERIoT Contributors.
 // SPDX-License-Identifier: MIT
 
+#include "core_logic.h"
 #include "attestation.h"
 #include "comms.h"
-#include "core_logic.h"
 #include "data_processing.h"
 #include "plantnode_types.h"
 #include "policy_engine.h"
@@ -19,11 +19,6 @@ void __cheri_compartment("core_logic") core_entry()
 	Debug::log("=== PlantNode core starting ===");
 
 	comms_connect();
-
-	{
-		static const char debugMsg[] = "plantnode-online";
-		comms_publish("test/plant", debugMsg, sizeof(debugMsg) - 1);
-	}
 
 	// TODO: configure policy thresholds from persistent storage
 

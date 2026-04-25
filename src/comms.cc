@@ -73,6 +73,8 @@ constexpr std::string_view TopicTelemetry{"plantnode/telemetry"};
 constexpr std::string_view TopicAttestation{"plantnode/attestation"};
 // Inbound: commands / verification responses from the remote verifier.
 constexpr std::string_view TopicCommands{"plantnode/commands"};
+// Outbound: ping message to show connection to the broker.
+constexpr std::string_view TopicPing{"plantnode/ping"};
 
 // ── Persistent MQTT state (private to this compartment) ───────────────────
 
@@ -252,6 +254,11 @@ int __cheri_compartment("comms") comms_connect()
 	Debug::log("Subscribed to '{}'.", TopicCommands);
 
 	display_connected_network();
+
+	static const char debugMsg[] = "plantnode-online";
+	comms_publish(TopicPing.data(), debugMsg, sizeof(debugMsg) - 1);
+	Debug::log("Sent initial ping message to broker.");
+
 	return 0;
 }
 
