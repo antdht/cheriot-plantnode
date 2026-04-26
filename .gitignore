@@ -40,6 +40,9 @@
 # debug information files
 *.dwo
 
-# CHERIoT-specific 
+# CHERIoT-specific
 .xmake/*
 build/*
+
+# Git worktrees
+.worktrees/
