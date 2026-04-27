@@ -1,50 +1,28 @@
 from typing import Annotated, Optional
 
-from pydantic import Field, BaseModel, SecretStr
+from pydantic import Field, BaseModel
 from pydantic_settings import (BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource,
                                SettingsConfigDict)
 
 
 class MqttConfig(BaseModel):
-    """
-    Configuration structure for MQTT connection settings.
-    """
-
     host: str
-    port: Annotated[int, Field(default=1883)]
-    username: str
-    password: SecretStr
-    jwt_secret: Annotated[Optional[SecretStr], Field(default=None, validation_alias="jwt-secret")]
+    port: Annotated[int, Field(default=8883)]
+    ca_cert: Annotated[str, Field(validation_alias="ca-cert")]
     client_id: Annotated[str, Field(validation_alias="client-id")]
-    topic_prefix: Annotated[str, Field(default="esp-sensors", validation_alias="topic-prefix")]
-    key_topic: Annotated[str, Field(default="key", validation_alias="key-topic")]
+    topic_prefix: Annotated[str, Field(default="plantnode", validation_alias="topic-prefix")]
 
 
 class LoggerConfig(BaseModel):
-    """
-    Configuration structure for Logger settings.
-    """
-
     csv_file_name: Annotated[str, Field(validation_alias="csv-file-name")]
 
 
 class PlotterConfig(BaseModel):
-    """
-    Configuration structure for Plotter settings.
-    """
-
     refresh_interval: Annotated[int, Field(default=1000, validation_alias="refresh-interval")]
-    """Refresh interval in milliseconds."""
-
     max_points: Annotated[Optional[int], Field(default=None, validation_alias="max-plot-points")]
-    """Maximum number of points to retain in the plots."""
 
 
 class AppConfig(BaseSettings):
-    """
-    Configuration structure for application settings.
-    """
-
     model_config = SettingsConfigDict(toml_file="config.toml")
 
     @classmethod

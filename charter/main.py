@@ -8,7 +8,7 @@ import paho.mqtt.client as mqtt
 from paho.mqtt import client as mqtt_lib
 
 from config import AppConfig
-from encryption import load_verifier_keypair, recover_session_key, decrypt_telemetry
+from encryption import load_verifier_keypair, recover_session_keys, decrypt_telemetry, encrypt_command
 from logger import CsvLogger
 from plotter import Plotter, PlotterQueue
 from sensors import SensorPayload, SensorSession
@@ -22,6 +22,7 @@ class AppState:
 
     temperature_queue: Queue[PlotterQueue]
     humidity_queue: Queue[PlotterQueue]
+    moisture_queue: Queue[PlotterQueue]
     config: AppConfig
     logger: CsvLogger
     verifier_kp: cydrogen.KxPair
@@ -37,6 +38,7 @@ def enqueue_for_plots(sender: str, payload: SensorPayload, state: AppState) -> N
     ts = datetime.datetime.fromtimestamp(float(payload.timestamp))
     state.temperature_queue.put({"sender": sender, "x": ts, "y": payload.temperature})
     state.humidity_queue.put({"sender": sender, "x": ts, "y": payload.humidity})
+    state.moisture_queue.put({"sender": sender, "x": ts, "y": payload.moisture})
 
 
 def on_connect(
@@ -71,13 +73,14 @@ def on_message(
                 )
                 return
 
-            rx_key = recover_session_key(state.verifier_kp, payload_bytes)
+            rx_key, tx_key = recover_session_keys(state.verifier_kp, payload_bytes)
             state.sessions[device_id] = SensorSession(
-                device_id=device_id, rx_key=rx_key
+                device_id=device_id, rx_key=rx_key, tx_key=tx_key
             )
             print(
                 f"Session established with {device_id} "
-                f"(rx_key={rx_key.hex()[:16]}...)"
+                f"(rx_key={rx_key.hex()[:16]}... "
+                f"tx_key={tx_key.hex()[:16]}...)"
             )
 
         # ── Encrypted telemetry: plantnode/telemetry ──────────────────────
@@ -119,11 +122,7 @@ def init_mqtt(state: AppState) -> mqtt.Client:
         userdata={"state": state},
     )
 
-    if state.config.mqtt.username:
-        client.username_pw_set(
-            state.config.mqtt.username,
-            state.config.mqtt.password.get_secret_value(),
-        )
+    client.tls_set(ca_certs=state.config.mqtt.ca_cert)
 
     client.on_message = on_message
     client.on_connect = on_connect
@@ -146,27 +145,40 @@ def init_tkinter(client: mqtt.Client) -> tkinter.Tk:
 
 def init_plotters(tk_root: tkinter.Tk, state: AppState) -> tuple[Plotter, ...]:
     left_frame = tkinter.Frame(tk_root)
+    mid_frame = tkinter.Frame(tk_root)
     right_frame = tkinter.Frame(tk_root)
     left_frame.pack(side="left", fill="both", expand=True)
+    mid_frame.pack(side="left", fill="both", expand=True)
     right_frame.pack(side="left", fill="both", expand=True)
+
+    interval = state.config.plotter.refresh_interval
+    max_pts = state.config.plotter.max_points
 
     temp_plot = Plotter(
         left_frame,
         state.temperature_queue,
-        interval=state.config.plotter.refresh_interval,
+        interval=interval,
         y_label="Temperature (°C)",
         title="Temperature Over Time",
-        max_points=state.config.plotter.max_points,
+        max_points=max_pts,
     )
     humidity_plot = Plotter(
-        right_frame,
+        mid_frame,
         state.humidity_queue,
-        interval=state.config.plotter.refresh_interval,
+        interval=interval,
         y_label="Humidity (%RH)",
         title="Humidity Over Time",
-        max_points=state.config.plotter.max_points,
+        max_points=max_pts,
     )
-    return temp_plot, humidity_plot
+    moisture_plot = Plotter(
+        right_frame,
+        state.moisture_queue,
+        interval=interval,
+        y_label="Moisture (raw)",
+        title="Moisture Over Time",
+        max_points=max_pts,
+    )
+    return temp_plot, humidity_plot, moisture_plot
 
 
 def main() -> None:
@@ -177,6 +189,7 @@ def main() -> None:
     state = AppState(
         temperature_queue=Queue(),
         humidity_queue=Queue(),
+        moisture_queue=Queue(),
         config=config,
         logger=CsvLogger(config.logger.csv_file_name),
         verifier_kp=verifier_kp,

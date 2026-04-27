@@ -3,14 +3,10 @@ csv-file-name = "sensor_data"
 
 [plotter]
 refresh-interval = 1000  # in milliseconds
-#max-points = 100
 
 [mqtt]
-host = ""
-port = 1883
-username = ""
-password = ""
+host = "domain.name"
+port = 8883
+ca-cert = "./path_to/mqtt_broker/ca.crt"
 client-id = "charter"
-jwt-secret = "emqxsecret"
-topic-prefix = "esp-sensors"
-key-topic = "key"
+topic-prefix = "plantnode"

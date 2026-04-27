@@ -38,6 +38,8 @@ class SensorSession:
 
     device_id: str
     rx_key: bytes
+    tx_key: bytes
+    tx_msg_id: int = 0
     connected_at: datetime.datetime = field(
         default_factory=datetime.datetime.now
     )
