@@ -48,6 +48,15 @@ add_deps("freestanding", "debug")
 compartment("attestation")
 add_files("src/attestation.cc")
 add_includedirs("src")
+add_defines("CHERIOT_NO_AMBIENT_MALLOC")
+add_deps("freestanding", "debug")
+
+compartment("crypto")
+add_files("src/crypto.cc")
+add_files("../cheriot-demos/third_party/crypto/libhydrogen/hydrogen.c")
+add_files("src/rand_32.cc")
+add_includedirs("src", "../cheriot-demos/third_party/crypto/libhydrogen")
+add_defines("CHERIOT_NO_AMBIENT_MALLOC")
 add_deps("freestanding", "debug")
 
 -- ── Driver compartments ───────────────────────────────────────────────────
@@ -78,7 +87,7 @@ firmware("plantnode")
 add_deps("freestanding", "debug")
 -- Application
 add_deps("core_logic", "comms", "data_processing", "policy_engine",
-         "attestation", "display")
+         "attestation", "crypto", "display")
 -- Drivers
 add_deps("i2c_driver", "moisture_sensor", "temperature_sensor", "pump_driver")
 -- Network stack

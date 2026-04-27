@@ -31,9 +31,17 @@ int __cheri_compartment("comms") comms_publish(const char *topic,
                                                size_t      payload_len);
 
 /**
- * Publish a sensor reading to the monitoring station topic
- * (plantnode/telemetry). Called by core_logic after data_read_sensors().
+ * Publish the 48-byte Noise-N packet1 to the key topic
+ * (plantnode/keys/plantnode-001) as a retained QoS-1 message.
+ * Called once at startup so the verifier can derive the session rx-key.
  *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("comms")
+  comms_publish_key_packet(const uint8_t *packet, size_t packetLen);
+
+/**
+ * Encrypt reading via the crypto compartment and publish to plantnode/telemetry.
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("comms")
