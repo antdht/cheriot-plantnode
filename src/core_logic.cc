@@ -47,7 +47,7 @@ void __cheri_compartment("core_logic") core_entry()
 
 	// TODO: configure policy thresholds from persistent storage
 
-	// while (true)
+	while (true)
 	{
 		SensorReading reading{};
 
@@ -66,7 +66,7 @@ void __cheri_compartment("core_logic") core_entry()
 
 		comms_poll();
 
-		Timeout t{MS_TO_TICKS(30000)};
+		Timeout t{MS_TO_TICKS(10000)};
 		thread_sleep(&t);
 	}
 }
