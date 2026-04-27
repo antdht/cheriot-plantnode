@@ -75,11 +75,27 @@ PlantNode MQTT: Synchronising time via SNTP...
 ...
 ```
 
+## Charter: host-side plotter
+
+The [`charter/`](charter/) directory contains a Python application that acts as the plotter for PlantNode devices. It connects to the same MQTT broker over TLS, completes the Noise-N key exchange, and decrypts sensor telemetry in real time. Cryptography is handled with [libhydrogen](https://github.com/jedisct1/libhydrogen) in its native form on the sonata, and wrapped into the [cydrogen](https://cydrogen.readthedocs.io/latest/) wrapper for the charter.
+
+### Certificates
+
+The charter uses two sets of cryptographic material, both stored under `charter/keys/` (excluded from version control):
+
+- **`keys/ca.crt`** — the MQTT broker's CA certificate, used to authenticate the TLS connection to the broker. Copy it from the broker's certificate directory (e.g. `../mosquitto_broker/certs/ca.crt`).
+- **`keys/verifier.pub` / `keys/verifier.key`** — the Noise-N static keypair that identifies this verifier. The public key is compiled into the device firmware (`kVerifierPublicKey` in `src/crypto.cc`); the secret key stays on the host and is never shared.
+
+See [`charter/README.md`](charter/README.md) for setup and usage instructions.
+
 ## Project Structure
 
 ```
 cheriot-plantnode/
-├── src/               # Application source
+├── src/               # Firmware source (CHERIoT compartments)
+├── charter/           # Host-side verifier (Python)
+│   ├── keys/          # CA cert + Noise-N verifier keypair (not committed)
+│   └── README.md
 ├── build/
 │   └── uf2/           # generated UF2 images (after build)
 ├── xmake.lua          # build configuration
