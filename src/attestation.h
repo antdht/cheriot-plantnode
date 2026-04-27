@@ -22,8 +22,7 @@ int __cheri_compartment("attestation")
  * sig_out must be at least AttestationSignatureMaxLength bytes.
  * Returns 0 on success, negative errno on failure.
  */
-int __cheri_compartment("attestation")
-  attestation_sign(const void *data,
-                   size_t      len,
-                   uint8_t    *sig_out,
-                   size_t     *sig_len);
+int __cheri_compartment("attestation") attestation_sign(const void *data,
+                                                        size_t      len,
+                                                        uint8_t    *sig_out,
+                                                        size_t     *sig_len);

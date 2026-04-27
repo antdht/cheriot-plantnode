@@ -8,7 +8,8 @@
 using Debug = ConditionalDebug<true, "PlantNode Pump">;
 
 // Sole owner of the GPIO MMIO capability for the pump control pin.
-// TODO: #include <platform-gpio.hh> and MMIO_CAPABILITY(SonataGPIO, gpio_arduino)
+// TODO: #include <platform-gpio.hh> and MMIO_CAPABILITY(SonataGPIO,
+// gpio_arduino)
 // TODO: define which GPIO pin drives the pump relay
 
 static bool s_pump_state = false;

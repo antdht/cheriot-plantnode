@@ -23,9 +23,8 @@ static void init_if_needed()
 	s_initialized = true;
 }
 
-int __cheri_compartment("i2c_driver") i2c_write(uint8_t        device_addr,
-                                                const uint8_t *data,
-                                                size_t         len)
+int __cheri_compartment("i2c_driver")
+  i2c_write(uint8_t device_addr, const uint8_t *data, size_t len)
 {
 	if (!data || len == 0)
 	{
@@ -33,7 +32,8 @@ int __cheri_compartment("i2c_driver") i2c_write(uint8_t        device_addr,
 	}
 	init_if_needed();
 	auto i2c = MMIO_CAPABILITY(OpenTitanI2c, i2c0);
-	if (!i2c->blocking_write(device_addr, data, static_cast<uint32_t>(len), false))
+	if (!i2c->blocking_write(
+	      device_addr, data, static_cast<uint32_t>(len), false))
 	{
 		Debug::log("i2c_write to 0x{:02x} failed", device_addr);
 		return -EIO;
@@ -41,9 +41,8 @@ int __cheri_compartment("i2c_driver") i2c_write(uint8_t        device_addr,
 	return 0;
 }
 
-int __cheri_compartment("i2c_driver") i2c_read(uint8_t  device_addr,
-                                               uint8_t *data,
-                                               size_t   len)
+int __cheri_compartment("i2c_driver")
+  i2c_read(uint8_t device_addr, uint8_t *data, size_t len)
 {
 	if (!data || len == 0)
 	{
@@ -59,12 +58,11 @@ int __cheri_compartment("i2c_driver") i2c_read(uint8_t  device_addr,
 	return 0;
 }
 
-int __cheri_compartment("i2c_driver")
-  i2c_write_read(uint8_t        device_addr,
-                 const uint8_t *wdata,
-                 size_t         wlen,
-                 uint8_t       *rdata,
-                 size_t         rlen)
+int __cheri_compartment("i2c_driver") i2c_write_read(uint8_t        device_addr,
+                                                     const uint8_t *wdata,
+                                                     size_t         wlen,
+                                                     uint8_t       *rdata,
+                                                     size_t         rlen)
 {
 	if (!wdata || !rdata || wlen == 0 || rlen == 0)
 	{
@@ -75,7 +73,8 @@ int __cheri_compartment("i2c_driver")
 	// Write register address with STOP, then read with a fresh START.
 	// Sensors that need a delay between write and read should use separate
 	// i2c_write / i2c_read calls with thread_millisecond_wait in between.
-	if (!i2c->blocking_write(device_addr, wdata, static_cast<uint32_t>(wlen), false))
+	if (!i2c->blocking_write(
+	      device_addr, wdata, static_cast<uint32_t>(wlen), false))
 	{
 		Debug::log("i2c_write_read write to 0x{:02x} failed", device_addr);
 		return -EIO;

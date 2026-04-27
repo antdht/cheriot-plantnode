@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "core_logic.h"
-#include "crypto.h"
 #include "comms.h"
+#include "crypto.h"
 #include "data_processing.h"
 #include "plantnode_types.h"
 #include "policy_engine.h"

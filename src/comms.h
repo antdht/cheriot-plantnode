@@ -26,9 +26,8 @@ int __cheri_compartment("comms") comms_connect();
  *
  * Returns 0 on success, negative errno on failure.
  */
-int __cheri_compartment("comms") comms_publish(const char *topic,
-                                               const void *payload,
-                                               size_t      payload_len);
+int __cheri_compartment("comms")
+  comms_publish(const char *topic, const void *payload, size_t payload_len);
 
 /**
  * Publish the 48-byte Noise-N packet1 to the key topic
@@ -41,8 +40,8 @@ int __cheri_compartment("comms")
   comms_publish_key_packet(const uint8_t *packet, size_t packetLen);
 
 /**
- * Encrypt reading via the crypto compartment and publish to plantnode/telemetry.
- * Returns 0 on success, negative errno on failure.
+ * Encrypt reading via the crypto compartment and publish to
+ * plantnode/telemetry. Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("comms")
   comms_publish_telemetry(const SensorReading *reading);

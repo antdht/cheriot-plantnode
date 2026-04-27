@@ -15,9 +15,10 @@ constexpr size_t CryptoEncryptedMaxLen = 8 + 36 + 96;
 
 /**
  * One-time boot: Noise-N KX step 1 using the verifier's compiled-in public key.
- * Stores both TX (device→server) and RX (server→device) session keys internally.
- * packetOut receives the 48-byte packet1 to publish so the verifier can derive
- * its session keys. Must be called before crypto_encrypt or crypto_decrypt.
+ * Stores both TX (device→server) and RX (server→device) session keys
+ * internally. packetOut receives the 48-byte packet1 to publish so the verifier
+ * can derive its session keys. Must be called before crypto_encrypt or
+ * crypto_decrypt.
  */
 int __cheri_compartment("crypto")
   crypto_init_session(uint8_t *packetOut, size_t *packetLen);
@@ -36,8 +37,7 @@ int __cheri_compartment("crypto")
  * Expects wire format: [8-byte msg_id LE][hydro_secretbox ciphertext].
  * Returns 0 on success, -EBADMSG if MAC fails, -ENOSYS if session not ready.
  */
-int __cheri_compartment("crypto")
-  crypto_decrypt(const uint8_t *inBuf,
-                 size_t         inLen,
-                 uint8_t       *plainOut,
-                 size_t        *plainLen);
+int __cheri_compartment("crypto") crypto_decrypt(const uint8_t *inBuf,
+                                                 size_t         inLen,
+                                                 uint8_t       *plainOut,
+                                                 size_t        *plainLen);

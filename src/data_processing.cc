@@ -11,8 +11,7 @@
 
 using Debug = ConditionalDebug<true, "PlantNode DataProc">;
 
-int __cheri_compartment("data_processing")
-  data_read_sensors(SensorReading *out)
+int __cheri_compartment("data_processing") data_read_sensors(SensorReading *out)
 {
 	if (!out)
 	{
@@ -36,7 +35,8 @@ int __cheri_compartment("data_processing")
 	}
 
 	struct timeval tv;
-	out->timestamp = (gettimeofday(&tv, nullptr) == 0) ? (uint32_t)tv.tv_sec : 0;
+	out->timestamp =
+	  (gettimeofday(&tv, nullptr) == 0) ? (uint32_t)tv.tv_sec : 0;
 
 	out->valid = true;
 

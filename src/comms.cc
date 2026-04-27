@@ -306,18 +306,19 @@ int __cheri_compartment("comms")
 	{
 		return -ENOTCONN;
 	}
-	Debug::log("Publishing Noise-N key packet ({} bytes, retained)...", packetLen);
+	Debug::log("Publishing Noise-N key packet ({} bytes, retained)...",
+	           packetLen);
 
-	int expected = s_ack_received + 1;
+	int     expected = s_ack_received + 1;
 	Timeout t{MS_TO_TICKS(5000)};
-	int ret = mqtt_publish(&t,
-	                       s_handle,
-	                       1,
-	                       TopicKey.data(),
-	                       TopicKey.size(),
-	                       packet,
-	                       packetLen,
-	                       /*retain=*/true);
+	int     ret = mqtt_publish(&t,
+	                           s_handle,
+	                           1,
+	                           TopicKey.data(),
+	                           TopicKey.size(),
+	                           packet,
+	                           packetLen,
+	                           /*retain=*/true);
 	if (ret < 0)
 	{
 		Debug::log("mqtt_publish key packet failed: {}", ret);

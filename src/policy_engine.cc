@@ -9,9 +9,9 @@
 
 using Debug = ConditionalDebug<true, "PlantNode Policy">;
 
-static uint16_t s_moisture_low   = 300;
-static uint16_t s_moisture_high  = 700;
-static int16_t  s_temp_max_cx10  = 400; // 40.0 °C
+static uint16_t s_moisture_low  = 300;
+static uint16_t s_moisture_high = 700;
+static int16_t  s_temp_max_cx10 = 400; // 40.0 °C
 
 PolicyOutcome __cheri_compartment("policy_engine")
   policy_evaluate(const SensorReading *reading)
@@ -31,7 +31,8 @@ PolicyOutcome __cheri_compartment("policy_engine")
 
 	if (reading->moisture_raw < s_moisture_low)
 	{
-		Debug::log("Moisture too low ({}), activating pump.", reading->moisture_raw);
+		Debug::log("Moisture too low ({}), activating pump.",
+		           reading->moisture_raw);
 		display_pump_activation(true);
 		// TODO: pump_on();
 		return PolicyOutcome::ActivatePump;
@@ -39,7 +40,8 @@ PolicyOutcome __cheri_compartment("policy_engine")
 
 	if (reading->moisture_raw > s_moisture_high)
 	{
-		Debug::log("Moisture sufficient ({}), deactivating pump.", reading->moisture_raw);
+		Debug::log("Moisture sufficient ({}), deactivating pump.",
+		           reading->moisture_raw);
 		display_pump_activation(false);
 		// TODO: pump_off();
 		return PolicyOutcome::DeactivatePump;
