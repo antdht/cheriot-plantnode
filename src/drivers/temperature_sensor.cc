@@ -86,31 +86,27 @@ static int do_measurement(uint8_t buf[6])
 }
 
 static void parse_measurement(const uint8_t buf[6],
-                               int16_t      *celsius_x10_out,
-                               uint16_t     *humidity_rx10_out)
+                              int16_t      *celsius_x10_out,
+                              uint16_t     *humidity_rx10_out)
 {
 	// Humidity: bits [39:20] of bytes 1-5
-	uint32_t raw_h = ((uint32_t)buf[1] << 12) |
-	                 ((uint32_t)buf[2] << 4)  |
-	                 (buf[3] >> 4);
+	uint32_t raw_h =
+	  ((uint32_t)buf[1] << 12) | ((uint32_t)buf[2] << 4) | (buf[3] >> 4);
 
 	// Temperature: bits [19:0] of bytes 3-5
-	uint32_t raw_t = ((uint32_t)(buf[3] & 0x0F) << 16) |
-	                 ((uint32_t)buf[4] << 8)             |
-	                 buf[5];
+	uint32_t raw_t =
+	  ((uint32_t)(buf[3] & 0x0F) << 16) | ((uint32_t)buf[4] << 8) | buf[5];
 
 	// T [°C × 10] = (raw_t × 2000 / 2^20) − 500
 	if (celsius_x10_out)
 	{
-		*celsius_x10_out =
-		  (int16_t)(((int32_t)raw_t * 2000 / 1048576) - 500);
+		*celsius_x10_out = (int16_t)(((int32_t)raw_t * 2000 / 1048576) - 500);
 	}
 
 	// RH [%RH × 10] = raw_h × 1000 / 2^20
 	if (humidity_rx10_out)
 	{
-		*humidity_rx10_out =
-		  (uint16_t)((uint32_t)raw_h * 1000u / 1048576u);
+		*humidity_rx10_out = (uint16_t)((uint32_t)raw_h * 1000u / 1048576u);
 	}
 }
 
@@ -145,6 +141,4 @@ int __cheri_compartment("temperature_sensor")
 
 int __cheri_compartment("temperature_sensor")
   temperature_read_celsius_x10(int16_t *celsius_x10_out)
-{
-	return temperature_read_both(celsius_x10_out, nullptr);
-}
+{ return temperature_read_both(celsius_x10_out, nullptr); }

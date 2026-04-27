@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "core_logic.h"
-#include "attestation.h"
 #include "comms.h"
+#include "crypto.h"
 #include "data_processing.h"
 #include "plantnode_types.h"
 #include "policy_engine.h"
@@ -20,6 +20,31 @@ void __cheri_compartment("core_logic") core_entry()
 
 	comms_connect();
 
+	// ── Key distribution (one-time at startup) ────────────────────────────
+	// Perform Noise-N step 1: derive session TX/RX keys and publish packet1
+	// so the verifier can recover session keys and decrypt telemetry.
+	{
+		uint8_t kxPacket[CryptoKxPacketLen];
+		size_t  kxLen = 0;
+		int     ret   = crypto_init_session(kxPacket, &kxLen);
+		if (ret != 0)
+		{
+			Debug::log("crypto_init_session failed: {}", ret);
+		}
+		else
+		{
+			ret = comms_publish_key_packet(kxPacket, kxLen);
+			if (ret != 0)
+			{
+				Debug::log("comms_publish_key_packet failed: {}", ret);
+			}
+			else
+			{
+				Debug::log("Key packet published ({} bytes)", kxLen);
+			}
+		}
+	}
+
 	// TODO: configure policy thresholds from persistent storage
 
 	while (true)
@@ -28,22 +53,20 @@ void __cheri_compartment("core_logic") core_entry()
 
 		data_read_sensors(&reading);
 
-		policy_evaluate(&reading);
+		// policy_evaluate(&reading);
 
-		uint8_t sig[AttestationSignatureMaxLength];
-		size_t  sig_len = 0;
-		attestation_sign(&reading, sizeof(reading), sig, &sig_len);
-
-		comms_publish_telemetry(&reading);
-
-		if (sig_len > 0)
+		// ── Publish telemetry (comms encrypts via crypto compartment) ─────
 		{
-			comms_publish_attestation(sig, sig_len);
+			int ret = comms_publish_telemetry(&reading);
+			if (ret != 0)
+			{
+				Debug::log("comms_publish_telemetry failed: {}", ret);
+			}
 		}
 
 		comms_poll();
 
-		Timeout t{MS_TO_TICKS(30000)};
+		Timeout t{MS_TO_TICKS(10000)};
 		thread_sleep(&t);
 	}
 }

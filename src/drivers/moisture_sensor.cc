@@ -22,16 +22,15 @@
 
 using Debug = ConditionalDebug<true, "PlantNode Moisture">;
 
-static constexpr uint8_t kAddr             = 0x36;
-static constexpr uint8_t kSeesawTouchBase  = 0x0F;
-static constexpr uint8_t kSeesawTouchCh0   = 0x10;
+static constexpr uint8_t kAddr            = 0x36;
+static constexpr uint8_t kSeesawTouchBase = 0x0F;
+static constexpr uint8_t kSeesawTouchCh0  = 0x10;
 
 // Calibration end-points — adjust after measuring your sensor in dry/wet soil.
 static constexpr uint16_t kCalDry = 400;
 static constexpr uint16_t kCalWet = 1800;
 
-int __cheri_compartment("moisture_sensor")
-  moisture_read_raw(uint16_t *raw_out)
+int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *raw_out)
 {
 	if (!raw_out)
 	{
@@ -89,8 +88,7 @@ int __cheri_compartment("moisture_sensor")
 	else
 	{
 		*percent_out = static_cast<uint8_t>(
-		  (static_cast<uint32_t>(raw - kCalDry) * 100u) /
-		  (kCalWet - kCalDry));
+		  (static_cast<uint32_t>(raw - kCalDry) * 100u) / (kCalWet - kCalDry));
 	}
 	return 0;
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "comms.h"
+#include "crypto.h"
 #include "display/display_comms.h"
 #include "plantnode_types.h"
 
@@ -69,6 +70,8 @@ constexpr size_t outgoingPublishCount = 20;
 
 // Outbound: periodic sensor data sent to the monitoring station.
 constexpr std::string_view TopicTelemetry{"plantnode/telemetry"};
+// Outbound: Noise-N packet1 for session key distribution (retained).
+constexpr std::string_view TopicKey{"plantnode/keys/plantnode-001"};
 // Outbound: signed attestation blob sent to the remote verifier.
 constexpr std::string_view TopicAttestation{"plantnode/attestation"};
 // Inbound: commands / verification responses from the remote verifier.
@@ -106,7 +109,23 @@ void __cheri_callback publishCallback(const char *topicName,
 
 	Debug::log("Incoming message on topic '{}'",
 	           std::string_view{topicName, topicNameLength});
-	// TODO: dispatch incoming commands from the remote verifier
+
+	if (std::string_view{topicName, topicNameLength} == TopicCommands)
+	{
+		uint8_t plainBuf[256];
+		size_t  plainLen = 0;
+		int     ret      = crypto_decrypt(static_cast<const uint8_t *>(payload),
+		                                  payloadLength,
+		                                  plainBuf,
+		                                  &plainLen);
+		if (ret != 0)
+		{
+			Debug::log("crypto_decrypt failed (err={})", ret);
+			return;
+		}
+		Debug::log("Decrypted command ({} bytes) — dispatch TODO", plainLen);
+		// TODO: parse and dispatch plaintext command to policy_engine
+	}
 }
 
 void __cheri_callback ackCallback(uint16_t packetID, bool isReject)
@@ -277,9 +296,9 @@ int __cheri_compartment("comms")
 }
 
 int __cheri_compartment("comms")
-  comms_publish_telemetry(const SensorReading *reading)
+  comms_publish_key_packet(const uint8_t *packet, size_t packetLen)
 {
-	if (!CHERI::check_pointer(reading, sizeof(SensorReading)))
+	if (!CHERI::check_pointer(packet, packetLen))
 	{
 		return -EINVAL;
 	}
@@ -287,8 +306,50 @@ int __cheri_compartment("comms")
 	{
 		return -ENOTCONN;
 	}
-	Debug::log("Publishing telemetry...");
-	return publish_and_wait(TopicTelemetry, reading, sizeof(SensorReading));
+	Debug::log("Publishing Noise-N key packet ({} bytes, retained)...",
+	           packetLen);
+
+	int     expected = s_ack_received + 1;
+	Timeout t{MS_TO_TICKS(5000)};
+	int     ret = mqtt_publish(&t,
+	                           s_handle,
+	                           1,
+	                           TopicKey.data(),
+	                           TopicKey.size(),
+	                           packet,
+	                           packetLen,
+	                           /*retain=*/true);
+	if (ret < 0)
+	{
+		Debug::log("mqtt_publish key packet failed: {}", ret);
+		return ret;
+	}
+	return wait_for_ack(expected);
+}
+
+int __cheri_compartment("comms")
+  comms_publish_telemetry(const SensorReading *reading)
+{
+	if (!reading)
+	{
+		return -EINVAL;
+	}
+	if (!Capability{s_handle}.is_valid())
+	{
+		return -ENOTCONN;
+	}
+
+	uint8_t encBuf[CryptoEncryptedMaxLen];
+	size_t  encLen = 0;
+	int     ret    = crypto_encrypt(reading, encBuf, &encLen);
+	if (ret != 0)
+	{
+		Debug::log("crypto_encrypt failed: {}", ret);
+		return ret;
+	}
+
+	Debug::log("Publishing encrypted telemetry ({} bytes)...", encLen);
+	return publish_and_wait(TopicTelemetry, encBuf, encLen);
 }
 
 int __cheri_compartment("comms")

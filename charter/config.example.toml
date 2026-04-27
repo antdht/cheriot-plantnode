@@ -1,0 +1,12 @@
+[logger]
+csv-file-name = "sensor_data"
+
+[plotter]
+refresh-interval = 1000  # in milliseconds
+
+[mqtt]
+host = "domain.name"
+port = 8883
+ca-cert = "./path_to/mqtt_broker/ca.crt"
+client-id = "charter"
+topic-prefix = "plantnode"
