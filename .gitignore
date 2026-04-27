@@ -47,7 +47,13 @@ build/*
 # Git worktrees
 .worktrees/
 
-# --- PYTHON (charter)
+# --- PYTHON ---
+
+# Charter-specific
+# Crypto secrets
+charter/keys/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
