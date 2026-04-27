@@ -1,0 +1,199 @@
+import datetime
+import tkinter
+from dataclasses import dataclass, field
+from queue import Queue
+from typing import Optional, TypedDict
+
+import paho.mqtt.client as mqtt
+from paho.mqtt import client as mqtt_lib
+
+from config import AppConfig
+from encryption import load_verifier_keypair, recover_session_key, decrypt_telemetry
+from logger import CsvLogger
+from plotter import Plotter, PlotterQueue
+from sensors import SensorPayload, SensorSession
+
+import cydrogen
+
+
+@dataclass
+class AppState:
+    """Application state containing shared resources."""
+
+    temperature_queue: Queue[PlotterQueue]
+    humidity_queue: Queue[PlotterQueue]
+    config: AppConfig
+    logger: CsvLogger
+    verifier_kp: cydrogen.KxPair
+    sessions: dict[str, SensorSession] = field(default_factory=dict)
+    mqtt_client: Optional[mqtt_lib.Client] = None
+
+
+class MqttUserData(TypedDict):
+    state: AppState
+
+
+def enqueue_for_plots(sender: str, payload: SensorPayload, state: AppState) -> None:
+    ts = datetime.datetime.fromtimestamp(float(payload.timestamp))
+    state.temperature_queue.put({"sender": sender, "x": ts, "y": payload.temperature})
+    state.humidity_queue.put({"sender": sender, "x": ts, "y": payload.humidity})
+
+
+def on_connect(
+    client: mqtt.Client, userdata: MqttUserData, flags, rc, properties
+) -> None:
+    if rc != 0:
+        print("Failed to connect, return code:", rc)
+        return
+
+    prefix = userdata["state"].config.mqtt.topic_prefix
+    print(f"Connected (rc={rc}), subscribing to {prefix}/keys/# and {prefix}/telemetry")
+    client.subscribe(f"{prefix}/keys/#")
+    client.subscribe(f"{prefix}/telemetry")
+
+
+def on_message(
+    client: mqtt.Client, userdata: MqttUserData, message: mqtt.MQTTMessage
+) -> None:
+    state = userdata["state"]
+    topic = message.topic
+    payload_bytes = message.payload
+    prefix = state.config.mqtt.topic_prefix
+
+    try:
+        # ── Key distribution message: plantnode/keys/{device_id} ─────────
+        if topic.startswith(f"{prefix}/keys/"):
+            device_id = topic.split("/")[-1]
+            if len(payload_bytes) != 48:
+                print(
+                    f"Key packet from {device_id} has wrong length "
+                    f"({len(payload_bytes)} bytes, expected 48)"
+                )
+                return
+
+            rx_key = recover_session_key(state.verifier_kp, payload_bytes)
+            state.sessions[device_id] = SensorSession(
+                device_id=device_id, rx_key=rx_key
+            )
+            print(
+                f"Session established with {device_id} "
+                f"(rx_key={rx_key.hex()[:16]}...)"
+            )
+
+        # ── Encrypted telemetry: plantnode/telemetry ──────────────────────
+        elif topic == f"{prefix}/telemetry":
+            # Binary format: [8B msg_id LE][secretbox ciphertext]
+            # The device_id is compiled into the key topic; for single-device
+            # setups use the first (and only) active session.
+            if not state.sessions:
+                print("No active session yet, cannot decrypt telemetry")
+                return
+
+            # Support single device: use the first session
+            # (extend with per-sender routing when multiple devices are needed)
+            device_id, session = next(iter(state.sessions.items()))
+
+            data = decrypt_telemetry(session.rx_key, payload_bytes)
+            reading = SensorPayload.from_dict(data)
+
+            print(
+                f"[{device_id}] T={reading.temperature:.1f}°C "
+                f"H={reading.humidity:.1f}%RH "
+                f"M={reading.moisture} "
+                f"ts={reading.timestamp}"
+            )
+
+            state.logger.log(device_id, reading)
+            enqueue_for_plots(device_id, reading, state)
+
+    except cydrogen.DecryptException as e:
+        print(f"Decryption failed on topic {topic}: {e}")
+    except Exception as e:
+        print(f"Unexpected error processing message on {topic}: {e}")
+
+
+def init_mqtt(state: AppState) -> mqtt.Client:
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        state.config.mqtt.client_id,
+        userdata={"state": state},
+    )
+
+    if state.config.mqtt.username:
+        client.username_pw_set(
+            state.config.mqtt.username,
+            state.config.mqtt.password.get_secret_value(),
+        )
+
+    client.on_message = on_message
+    client.on_connect = on_connect
+    client.connect(state.config.mqtt.host, state.config.mqtt.port, 60)
+    return client
+
+
+def init_tkinter(client: mqtt.Client) -> tkinter.Tk:
+    root = tkinter.Tk()
+    root.title("PlantNode — Real-time Sensor Data")
+
+    def on_closing() -> None:
+        client.loop_stop()
+        client.disconnect()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+    return root
+
+
+def init_plotters(tk_root: tkinter.Tk, state: AppState) -> tuple[Plotter, ...]:
+    left_frame = tkinter.Frame(tk_root)
+    right_frame = tkinter.Frame(tk_root)
+    left_frame.pack(side="left", fill="both", expand=True)
+    right_frame.pack(side="left", fill="both", expand=True)
+
+    temp_plot = Plotter(
+        left_frame,
+        state.temperature_queue,
+        interval=state.config.plotter.refresh_interval,
+        y_label="Temperature (°C)",
+        title="Temperature Over Time",
+        max_points=state.config.plotter.max_points,
+    )
+    humidity_plot = Plotter(
+        right_frame,
+        state.humidity_queue,
+        interval=state.config.plotter.refresh_interval,
+        y_label="Humidity (%RH)",
+        title="Humidity Over Time",
+        max_points=state.config.plotter.max_points,
+    )
+    return temp_plot, humidity_plot
+
+
+def main() -> None:
+    config = AppConfig()
+    verifier_kp = load_verifier_keypair()
+    print(f"Verifier pk: {bytes(verifier_kp.public_key()).hex()}")
+
+    state = AppState(
+        temperature_queue=Queue(),
+        humidity_queue=Queue(),
+        config=config,
+        logger=CsvLogger(config.logger.csv_file_name),
+        verifier_kp=verifier_kp,
+    )
+
+    client = init_mqtt(state)
+    state.mqtt_client = client
+
+    tk_root = init_tkinter(client)
+    init_plotters(tk_root, state)
+
+    client.loop_start()
+    tk_root.mainloop()
+
+    client.loop_stop()
+    client.disconnect()
+
+
+if __name__ == "__main__":
+    main()

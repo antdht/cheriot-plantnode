@@ -52,7 +52,8 @@ build/*
 # Charter-specific
 # Crypto secrets
 charter/keys/
-
+charter/config.toml
+charter/sensor_data.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

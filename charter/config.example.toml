@@ -1,0 +1,16 @@
+[logger]
+csv-file-name = "sensor_data"
+
+[plotter]
+refresh-interval = 1000  # in milliseconds
+#max-points = 100
+
+[mqtt]
+host = ""
+port = 1883
+username = ""
+password = ""
+client-id = "charter"
+jwt-secret = "emqxsecret"
+topic-prefix = "esp-sensors"
+key-topic = "key"
