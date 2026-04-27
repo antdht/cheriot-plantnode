@@ -4,23 +4,33 @@
 #include "crypto.h"
 #include <debug.hh>
 #include <errno.h>
+#include <platform-entropy.hh>
 #include <string.h>
 
 #include "hydrogen.h"
 
 using Debug = ConditionalDebug<true, "PlantNode Crypto">;
 
+// Required by libhydrogen for seeding its internal PRNG.
+// Must be defined in the same compartment as hydrogen.c.
+extern "C" uint32_t rand_32()
+{
+	static EntropySource rng;
+	uint64_t             r = rng();
+	return static_cast<uint32_t>(r);
+}
+
 // Verifier's static Noise-N public key (compiled in).
 // Generated once: cydrogen.KxPair.gen(); verifier holds the sk.
 static const uint8_t kVerifierPublicKey[hydro_kx_PUBLICKEYBYTES] = {
-	0x8d, 0xae, 0x2d, 0x4d, 0xdc, 0x9b, 0xe6, 0x5b, 0x4e, 0x89, 0xaf,
-	0x65, 0x9c, 0xbc, 0xc1, 0xff, 0x4e, 0xd1, 0xe9, 0xb7, 0x90, 0xd7,
-	0x7e, 0xd0, 0xd9, 0x9b, 0x80, 0x20, 0xa9, 0x67, 0x2a, 0x16};
+  0x8d, 0xae, 0x2d, 0x4d, 0xdc, 0x9b, 0xe6, 0x5b, 0x4e, 0x89, 0xaf,
+  0x65, 0x9c, 0xbc, 0xc1, 0xff, 0x4e, 0xd1, 0xe9, 0xb7, 0x90, 0xd7,
+  0x7e, 0xd0, 0xd9, 0x9b, 0x80, 0x20, 0xa9, 0x67, 0x2a, 0x16};
 
 // Context strings (must be exactly 8 bytes).
 // kBoxCtx matches cydrogen's SecretBox default (8 space bytes 0x20).
-static const char kBoxCtx[hydro_secretbox_CONTEXTBYTES] = {
-	' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+static const char kBoxCtx[hydro_secretbox_CONTEXTBYTES] =
+  {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
 
 // Per-boot session keys (both directions).
 static uint8_t  s_sessionTxKey[hydro_kx_SESSIONKEYBYTES];
@@ -142,7 +152,8 @@ int __cheri_compartment("crypto")
 	bool ok = WL("{\"timestamp\":") && write_uint(reading->timestamp) &&
 	          WL(",\"humidity\":") && write_uint(reading->humidity_rx10) &&
 	          WL(",\"temperature\":") && write_int(reading->temperature_cx10) &&
-	          WL(",\"moisture\":") && write_uint(reading->moisture_raw) && WL("}");
+	          WL(",\"moisture\":") && write_uint(reading->moisture_raw) &&
+	          WL("}");
 #undef WL
 
 	if (!ok)
@@ -159,12 +170,8 @@ int __cheri_compartment("crypto")
 		outBuf[i] = (uint8_t)(msgId >> (8 * i));
 	}
 
-	if (hydro_secretbox_encrypt(outBuf + 8,
-	                            plain,
-	                            plainLen,
-	                            msgId,
-	                            kBoxCtx,
-	                            s_sessionTxKey) != 0)
+	if (hydro_secretbox_encrypt(
+	      outBuf + 8, plain, plainLen, msgId, kBoxCtx, s_sessionTxKey) != 0)
 	{
 		Debug::log("crypto_encrypt: secretbox encrypt failed");
 		return -EIO;
@@ -177,11 +184,10 @@ int __cheri_compartment("crypto")
 	return 0;
 }
 
-int __cheri_compartment("crypto")
-  crypto_decrypt(const uint8_t *inBuf,
-                 size_t         inLen,
-                 uint8_t       *plainOut,
-                 size_t        *plainLen)
+int __cheri_compartment("crypto") crypto_decrypt(const uint8_t *inBuf,
+                                                 size_t         inLen,
+                                                 uint8_t       *plainOut,
+                                                 size_t        *plainLen)
 {
 	if (!inBuf || !plainOut || !plainLen)
 	{
@@ -212,12 +218,8 @@ int __cheri_compartment("crypto")
 	size_t cipherLen    = inLen - 8;
 	size_t decryptedLen = cipherLen - hydro_secretbox_HEADERBYTES;
 
-	if (hydro_secretbox_decrypt(plainOut,
-	                            inBuf + 8,
-	                            cipherLen,
-	                            msgId,
-	                            kBoxCtx,
-	                            s_sessionRxKey) != 0)
+	if (hydro_secretbox_decrypt(
+	      plainOut, inBuf + 8, cipherLen, msgId, kBoxCtx, s_sessionRxKey) != 0)
 	{
 		Debug::log("crypto_decrypt: MAC verification failed");
 		return -EBADMSG;
