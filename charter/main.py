@@ -8,7 +8,12 @@ import paho.mqtt.client as mqtt
 from paho.mqtt import client as mqtt_lib
 
 from config import AppConfig
-from encryption import load_verifier_keypair, recover_session_keys, decrypt_telemetry, encrypt_command
+from encryption import (
+    load_verifier_keypair,
+    recover_session_keys,
+    decrypt_telemetry,
+    encrypt_command,
+)
 from logger import CsvLogger
 from plotter import Plotter, PlotterQueue
 from sensors import SensorPayload, SensorSession
@@ -105,6 +110,18 @@ def on_message(
                 f"M={reading.moisture} "
                 f"ts={reading.timestamp}"
             )
+
+            # Report a watering only when the timestamp changes from the last
+            # one seen for this device (the first payload just sets a baseline).
+            if (
+                session.last_watering_seen is not None
+                and reading.last_watering != session.last_watering_seen
+            ):
+                watered_at = datetime.datetime.fromtimestamp(
+                    float(reading.last_watering)
+                )
+                print(f"[{device_id}] New watering detected at {watered_at}")
+            session.last_watering_seen = reading.last_watering
 
             state.logger.log(device_id, reading)
             enqueue_for_plots(device_id, reading, state)

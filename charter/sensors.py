@@ -12,12 +12,15 @@ class SensorPayload:
       - humidity:    %RH        (firmware sends × 10, divided here)
       - moisture:    raw Seesaw capacitance (dry ≈ 400, wet ≈ 1800)
       - timestamp:   UNIX epoch seconds
+      - last_watering: UNIX epoch seconds of the most recent pump activation
+                       (0 if the device has never watered)
     """
 
     timestamp: int
     temperature: float
     humidity: float
     moisture: int
+    last_watering: int
 
     @classmethod
     def from_dict(cls, d: dict) -> "SensorPayload":
@@ -26,6 +29,7 @@ class SensorPayload:
             temperature=float(d["temperature"]) / 10.0,
             humidity=float(d["humidity"]) / 10.0,
             moisture=int(d["moisture"]),
+            last_watering=int(d.get("lastWatering", 0)),
         )
 
 
@@ -40,6 +44,8 @@ class SensorSession:
     rx_key: bytes
     tx_key: bytes
     tx_msg_id: int = 0
-    connected_at: datetime.datetime = field(
-        default_factory=datetime.datetime.now
-    )
+    # Most recent last_watering value seen in telemetry; None until the first
+    # payload is processed, so a watering is only reported once observed to
+    # change.
+    last_watering_seen: int | None = None
+    connected_at: datetime.datetime = field(default_factory=datetime.datetime.now)
