@@ -10,8 +10,8 @@
 
 // hydro_kx_N_PACKET1BYTES = 32 + 16 = 48
 constexpr size_t CryptoKxPacketLen = 48;
-// 8-byte msg_id prefix + hydro_secretbox_HEADERBYTES (36) + max plaintext (96)
-constexpr size_t CryptoEncryptedMaxLen = 8 + 36 + 96;
+// 8-byte msg_id prefix + hydro_secretbox_HEADERBYTES (36) + max plaintext (128)
+constexpr size_t CryptoEncryptedMaxLen = 8 + 36 + 128;
 
 /**
  * One-time boot: Noise-N KX step 1 using the verifier's compiled-in public key.

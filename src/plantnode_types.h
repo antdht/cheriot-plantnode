@@ -17,7 +17,9 @@ struct SensorReading
 	int16_t  temperature_cx10; // AHT20 0x38:  °C × 10  (e.g. 235 = 23.5 °C)
 	uint16_t humidity_rx10;    // AHT20 0x38:  %RH × 10 (e.g. 455 = 45.5 %RH)
 	uint32_t timestamp;        // UNIX timestamp at time of reading
-	bool     valid;            // false if either sensor read failed
+	uint32_t last_watering; // UNIX timestamp of most recent pump activation (0
+	                        // = never)
+	bool valid;             // false if either sensor read failed
 };
 
 /**
@@ -26,9 +28,8 @@ struct SensorReading
 enum class PolicyOutcome : uint8_t
 {
 	NoAction,
-	ActivatePump,
-	DeactivatePump,
-	SendAlert,
+	PumpActivation,
+	TempAlert,
 };
 
 /**

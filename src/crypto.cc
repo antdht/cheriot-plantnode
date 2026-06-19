@@ -94,8 +94,9 @@ int __cheri_compartment("crypto")
 	}
 
 	// Serialise reading to compact JSON without snprintf (no stdio dependency).
-	// Format: {"timestamp":U,"humidity":U,"temperature":I,"moisture":U}
-	char   plain[96];
+	// Format:
+	// {"timestamp":U,"humidity":U,"temperature":I,"moisture":U,"lastWatering":U}
+	char   plain[128];
 	size_t pos = 0;
 
 	auto write_char = [&](char c) -> bool {
@@ -153,6 +154,7 @@ int __cheri_compartment("crypto")
 	          WL(",\"humidity\":") && write_uint(reading->humidity_rx10) &&
 	          WL(",\"temperature\":") && write_int(reading->temperature_cx10) &&
 	          WL(",\"moisture\":") && write_uint(reading->moisture_raw) &&
+	          WL(",\"lastWatering\":") && write_uint(reading->last_watering) &&
 	          WL("}");
 #undef WL
 

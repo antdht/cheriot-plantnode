@@ -10,8 +10,8 @@
 using Debug = ConditionalDebug<true, "PlantNode Policy">;
 
 static uint16_t s_moisture_low  = 300;
-static uint16_t s_moisture_high = 700;
-static int16_t  s_temp_max_cx10 = 400; // 40.0 °C
+static uint16_t s_moisture_high = 1500;
+static int16_t  s_temp_max_cx10 = 280; // 40.0 °C
 
 PolicyOutcome __cheri_compartment("policy_engine")
   policy_evaluate(const SensorReading *reading)
@@ -26,7 +26,7 @@ PolicyOutcome __cheri_compartment("policy_engine")
 		Debug::log("Temperature threshold exceeded: {} (max {})",
 		           reading->temperature_cx10,
 		           s_temp_max_cx10);
-		return PolicyOutcome::SendAlert;
+		return PolicyOutcome::TempAlert;
 	}
 
 	if (reading->moisture_raw < s_moisture_low)
@@ -34,17 +34,10 @@ PolicyOutcome __cheri_compartment("policy_engine")
 		Debug::log("Moisture too low ({}), activating pump.",
 		           reading->moisture_raw);
 		display_pump_activation(true);
-		// TODO: pump_on();
-		return PolicyOutcome::ActivatePump;
-	}
-
-	if (reading->moisture_raw > s_moisture_high)
-	{
-		Debug::log("Moisture sufficient ({}), deactivating pump.",
-		           reading->moisture_raw);
-		display_pump_activation(false);
-		// TODO: pump_off();
-		return PolicyOutcome::DeactivatePump;
+		// TODO: pump_on() for a short watering pulse (~2-3 s), then record the
+		// watering timestamp so we can throttle re-watering with a minimum
+		// interval instead of waiting for a high-moisture reading.
+		return PolicyOutcome::PumpActivation;
 	}
 
 	return PolicyOutcome::NoAction;

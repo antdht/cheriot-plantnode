@@ -41,7 +41,8 @@ int __cheri_compartment("comms")
 
 /**
  * Encrypt reading via the crypto compartment and publish to
- * plantnode/telemetry. Returns 0 on success, negative errno on failure.
+ * plantnode/telemetry. Returns 0 on success,
+ * negative errno on failure.
  */
 int __cheri_compartment("comms")
   comms_publish_telemetry(const SensorReading *reading);

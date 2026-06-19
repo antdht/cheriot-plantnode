@@ -12,6 +12,7 @@
 #endif
 #include <array>
 #include <cheri.hh>
+#include <cstdio>
 #include <cstdlib>
 #include <debug.hh>
 #include <errno.h>
@@ -123,7 +124,7 @@ void __cheri_callback publishCallback(const char *topicName,
 			Debug::log("crypto_decrypt failed (err={})", ret);
 			return;
 		}
-		Debug::log("Decrypted command ({} bytes) — dispatch TODO", plainLen);
+		Debug::log("Decrypted command ({} bytes) - dispatch TODO", plainLen);
 		// TODO: parse and dispatch plaintext command to policy_engine
 	}
 }

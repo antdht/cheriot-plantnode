@@ -45,7 +45,9 @@ void __cheri_compartment("core_logic") core_entry()
 		}
 	}
 
-	// TODO: configure policy thresholds from persistent storage
+	// Timestamp of the most recent pump activation; surfaced in every
+	// telemetry payload via the reading's last_watering field. 0 = never.
+	uint32_t lastWatering = 0;
 
 	while (true)
 	{
@@ -53,11 +55,27 @@ void __cheri_compartment("core_logic") core_entry()
 
 		data_read_sensors(&reading);
 
-		// policy_evaluate(&reading);
+		PolicyOutcome out = policy_evaluate(&reading);
+
+		switch (out)
+		{
+			case PolicyOutcome::NoAction:
+				break;
+			case PolicyOutcome::TempAlert:
+				break;
+			case PolicyOutcome::PumpActivation:
+				// Record the watering; reported in the telemetry payload below.
+				lastWatering = reading.timestamp;
+				break;
+			default:
+				Debug::log("outcome not recognized: {}", out);
+				break;
+		}
 
 		// ── Publish telemetry (comms encrypts via crypto compartment) ─────
 		{
-			int ret = comms_publish_telemetry(&reading);
+			reading.last_watering = lastWatering;
+			int ret               = comms_publish_telemetry(&reading);
 			if (ret != 0)
 			{
 				Debug::log("comms_publish_telemetry failed: {}", ret);
