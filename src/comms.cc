@@ -22,7 +22,6 @@
 #include <thread.h>
 #include <tick_macros.h>
 
-// ── MQTT broker selection ──────────────────────────────────────────────────
 // Define MQTT_USE_LOCAL_BROKER at build time to connect to a local broker
 // instead of test.mosquitto.org. The local broker's CA is in local_ip.h.
 // Override MQTT_LOCAL_BROKER_HOST / MQTT_LOCAL_BROKER_PORT as needed.
@@ -53,7 +52,7 @@ using CHERI::Capability;
 using Debug            = ConditionalDebug<true, "PlantNode Comms">;
 constexpr bool UseIPv6 = CHERIOT_RTOS_OPTION_IPv6;
 
-// ── MQTT infrastructure ────────────────────────────────────────────────────
+// MQTT infrastructure
 
 // Separate heap quota for all network allocations.
 DECLARE_AND_DEFINE_ALLOCATOR_CAPABILITY(mqttMalloc, 32 * 1024);
@@ -67,7 +66,7 @@ constexpr size_t networkBufferSize    = 1024;
 constexpr size_t incomingPublishCount = 20;
 constexpr size_t outgoingPublishCount = 20;
 
-// ── Topic constants ────────────────────────────────────────────────────────
+// Topic constants
 
 // Outbound: periodic sensor data sent to the monitoring station.
 constexpr std::string_view TopicTelemetry{"plantnode/telemetry"};
@@ -80,14 +79,14 @@ constexpr std::string_view TopicCommands{"plantnode/commands"};
 // Outbound: ping message to show connection to the broker.
 constexpr std::string_view TopicPing{"plantnode/ping"};
 
-// ── Persistent MQTT state (private to this compartment) ───────────────────
+// Persistent MQTT state (private to this compartment)
 
 // The sealed MQTT handle never leaves this compartment.
 // core_logic holds no capability to it — it cannot publish directly.
 static MQTTConnection s_handle       = nullptr;
 static volatile int   s_ack_received = 0;
 
-// ── Callbacks ─────────────────────────────────────────────────────────────
+// Callbacks
 
 void __cheri_callback publishCallback(const char *topicName,
                                       size_t      topicNameLength,
@@ -142,7 +141,7 @@ void __cheri_callback ackCallback(uint16_t packetID, bool isReject)
 	s_ack_received++;
 }
 
-// ── Internal helpers ───────────────────────────────────────────────────────
+// Internal helpers
 
 static int wait_for_ack(int expected_acks, uint32_t timeout_ms = 5000)
 {
@@ -182,7 +181,7 @@ static int publish_and_wait(std::string_view topic,
 	return ret;
 }
 
-// ── Public compartment functions ───────────────────────────────────────────
+// Public compartment functions
 
 int __cheri_compartment("comms") comms_connect()
 {

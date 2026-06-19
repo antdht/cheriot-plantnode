@@ -15,7 +15,7 @@ constexpr size_t CryptoEncryptedMaxLen = 8 + 36 + 128;
 
 /**
  * One-time boot: Noise-N KX step 1 using the verifier's compiled-in public key.
- * Stores both TX (device→server) and RX (server→device) session keys
+ * Stores both TX (device->server) and RX (server->device) session keys
  * internally. packetOut receives the 48-byte packet1 to publish so the verifier
  * can derive its session keys. Must be called before crypto_encrypt or
  * crypto_decrypt.

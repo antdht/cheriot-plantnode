@@ -20,7 +20,7 @@ void __cheri_compartment("core_logic") core_entry()
 
 	comms_connect();
 
-	// ── Key distribution (one-time at startup) ────────────────────────────
+	// Key distribution (one-time at startup)
 	// Perform Noise-N step 1: derive session TX/RX keys and publish packet1
 	// so the verifier can recover session keys and decrypt telemetry.
 	{
@@ -72,7 +72,7 @@ void __cheri_compartment("core_logic") core_entry()
 				break;
 		}
 
-		// ── Publish telemetry (comms encrypts via crypto compartment) ─────
+		// Publish telemetry (comms encrypts via crypto compartment)
 		{
 			reading.last_watering = lastWatering;
 			int ret               = comms_publish_telemetry(&reading);

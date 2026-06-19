@@ -19,7 +19,7 @@ static void init_if_needed()
 	auto i2c = MMIO_CAPABILITY(OpenTitanI2c, i2c0);
 	i2c->reset_fifos();
 	i2c->host_mode_set();
-	i2c->speed_set(100); // 100 kHz — safe for all qwiic devices
+	i2c->speed_set(100); // 100 kHz safe for qwiic
 	s_initialized = true;
 }
 

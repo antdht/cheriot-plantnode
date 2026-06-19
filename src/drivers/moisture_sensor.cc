@@ -5,7 +5,7 @@
 // Chip: Adafruit Seesaw (ATSAMD10)   I2C address: 0x36
 //
 // Protocol: write [SEESAW_TOUCH_BASE, SEESAW_TOUCH_CHANNEL_OFFSET] to select
-// the touch ADC channel, wait ≥1 ms for the measurement to settle, then read
+// the touch ADC channel, wait >=1 ms for the measurement to settle, then read
 // 2 bytes (big-endian uint16_t) containing the raw capacitance value.
 //
 // Typical raw values (may vary by sensor and soil composition):
@@ -46,7 +46,7 @@ int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *raw_out)
 		return ret;
 	}
 
-	// Seesaw needs ≥1 ms to complete the capacitance measurement
+	// Seesaw needs >=1 ms to complete the capacitance measurement
 	thread_millisecond_wait(2);
 
 	// Read 2-byte big-endian result

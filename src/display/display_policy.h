@@ -16,8 +16,8 @@
 /**
  * Show a pump activation or deactivation notice on screen.
  *
- * @param activating  true  → pump is being turned ON  (watering started)
- *                    false → pump is being turned OFF (watering done)
+ * @param activating  true  -> pump is being turned ON  (watering started)
+ *                    false -> pump is being turned OFF (watering done)
  *
  * Called by policy_engine when the pump state changes.
  */

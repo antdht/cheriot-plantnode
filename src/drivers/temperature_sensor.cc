@@ -8,7 +8,7 @@
 //  1. On first use: read 1-byte status. If calibration bit (bit 3) is clear,
 //     send initialization command [0xBE, 0x08, 0x00] and wait 10 ms.
 //  2. Trigger: send [0xAC, 0x33, 0x00].
-//  3. Wait ≥80 ms for the measurement to complete.
+//  3. Wait >=80 ms for the measurement to complete.
 //  4. Read 6 bytes:
 //       byte[0]           = status  (bit 7 = busy, bit 3 = calibrated)
 //       bytes[1..2], hi(3) = 20-bit raw humidity   (big-endian, MSB first)
@@ -66,7 +66,7 @@ static int do_measurement(uint8_t buf[6])
 		return ret;
 	}
 
-	// Wait for measurement to complete (datasheet: ≥80 ms)
+	// Wait for measurement to complete (datasheet: >=80 ms)
 	thread_millisecond_wait(85);
 
 	// Read 6 bytes

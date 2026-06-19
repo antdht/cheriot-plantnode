@@ -9,7 +9,6 @@
 
 /**
  * Aggregated sensor reading passed between compartments.
- * Plain data — no pointers — safe for cross-compartment transfer.
  */
 struct SensorReading
 {

@@ -13,14 +13,14 @@ set_toolchains("cheriot-clang")
 option("board")
 set_default("sail")
 
--- ── Display compartment ───────────────────────────────────────────────────
+-- Display compartment
 
 compartment("display")
 add_files("src/display/display.cc")
 add_includedirs("src", "../sonata-software/libraries")
 add_deps("freestanding", "debug", "lcd")
 
--- ── Application compartments ──────────────────────────────────────────────
+-- Application compartments
 
 compartment("core_logic")
 add_files("src/core_logic.cc")
@@ -56,7 +56,7 @@ add_includedirs("src", "../cheriot-demos/third_party/crypto/libhydrogen")
 add_defines("CHERIOT_NO_AMBIENT_MALLOC")
 add_deps("freestanding", "debug")
 
--- ── Driver compartments ───────────────────────────────────────────────────
+-- Driver compartments
 
 compartment("i2c_driver")
 add_files("src/drivers/i2c_driver.cc")
@@ -78,7 +78,7 @@ add_files("src/drivers/pump_driver.cc")
 add_includedirs("src")
 add_deps("freestanding", "debug")
 
--- ── Firmware image ────────────────────────────────────────────────────────
+-- Firmware image
 
 firmware("plantnode")
 add_deps("freestanding", "debug")
@@ -88,7 +88,7 @@ add_deps("core_logic", "comms", "data_processing", "policy_engine", "attestation
 add_deps("i2c_driver", "moisture_sensor", "temperature_sensor", "pump_driver")
 -- Network stack
 add_deps("TCPIP", "TLS", "MQTT", "Firewall", "NetAPI", "DNS", "SNTP")
--- Required for RSA certificate validation (mosquitto.org uses RSA)
+-- Required for RSA certificate validation)
 add_options("tls-rsa")
 after_link(function(target)
 	local fw = target:targetfile()

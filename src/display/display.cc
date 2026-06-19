@@ -18,7 +18,7 @@ static SonataLcd &lcd()
 	return instance;
 }
 
-// ── String formatting helpers ─────────────────────────────────────────────
+// String formatting helpers
 
 static char *append_str(char *p, const char *s)
 {
@@ -45,7 +45,7 @@ static char *append_uint(char *p, unsigned v)
 	return p;
 }
 
-// Formats val/divisor with one decimal place (e.g. 235/10 → "23.5").
+// Formats val/divisor with one decimal place (e.g. 235/10 -> "23.5").
 static char *append_decimal(char *p, int val, unsigned divisor)
 {
 	if (val < 0)
@@ -59,7 +59,7 @@ static char *append_decimal(char *p, int val, unsigned divisor)
 	return p;
 }
 
-// ── Shared layout helpers ─────────────────────────────────────────────────
+// Shared layout helpers
 
 static void draw_title_bar(SonataLcd &l, Size res, Color bg = Color::Blue)
 {
@@ -67,7 +67,7 @@ static void draw_title_bar(SonataLcd &l, Size res, Color bg = Color::Blue)
 	l.draw_str({4, 3}, "PlantNode", bg, Color::White, Font::M5x7_16pt);
 }
 
-// ── comms ─────────────────────────────────────────────────────────────────
+// comms
 
 void __cheri_compartment("display") display_connecting_network()
 {
@@ -109,7 +109,7 @@ void __cheri_compartment("display") display_connected_network()
 	           Font::LucidaConsole_10pt);
 }
 
-// ── data_processing ───────────────────────────────────────────────────────
+// data_processing
 
 void __cheri_compartment("display")
   display_sensor_readings(const SensorReading *reading)
@@ -160,7 +160,7 @@ void __cheri_compartment("display")
 	  {4, 62}, line, Color::Black, Color::White, Font::LucidaConsole_10pt);
 }
 
-// ── policy_engine ─────────────────────────────────────────────────────────
+// policy_engine
 
 void __cheri_compartment("display") display_pump_activation(bool activating)
 {
