@@ -49,3 +49,8 @@ class SensorSession:
     # change.
     last_watering_seen: int | None = None
     connected_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+    # Remote-attestation handshake state. nonce_v is the verifier nonce sent in
+    # challenge 1; combined is the agreed nonce the quote must bind to. Both are
+    # None until a handshake is in flight.
+    ra_nonce_v: bytes | None = None
+    ra_combined: bytes | None = None

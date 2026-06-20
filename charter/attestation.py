@@ -14,6 +14,34 @@ DEFAULT_FIRMWARE_ELF = (
 IMAGE_HASH_CONTEXT = "PN-IMAGE"
 IMAGE_HASH_LENGTH = 32
 
+# Quote-digest hash context (attestation.cc kQuoteContext) and signing context
+# (fake_tpm.cc kSignContext). Must match the firmware byte-for-byte.
+QUOTE_DIGEST_CONTEXT = "PN-QUOTE"
+SIGN_CONTEXT = "PN-ATST1"
+# Nonce-combination context (crypto.cc kCombineCtx / AttestationCombineContext).
+COMBINE_CONTEXT = "PN-COMB1"
+
+NONCE_LENGTH = 32
+SIGNATURE_LENGTH = 64  # hydro_sign_BYTES
+PUBLIC_KEY_LENGTH = 32  # hydro_sign_PUBLICKEYBYTES
+SEED_LENGTH = 32  # hydro_sign_SEEDBYTES
+SECRET_KEY_LENGTH = 64  # hydro_sign_SECRETKEYBYTES
+
+# DEMO seed compiled into fake_tpm.cc (kSeed). The verifier derives the device's
+# signing public key offline from this via hydro_sign_keygen_deterministic. A
+# real deployment would provision a hardware-unique key never present in the image.
+FAKE_TPM_SEED = b"PLANTNODE-fake-tpm-seed-v1-demo!"
+assert len(FAKE_TPM_SEED) == SEED_LENGTH
+
+# Remote-attestation handshake message-type tags (first plaintext byte).
+# Verifier -> device:
+RA_CHALLENGE1 = 0x01  # payload: nonce_V[32]
+RA_CHALLENGE2 = 0x02  # payload: combined[32]
+RA_APPROVED = 0x03  # payload: combined[32] (quote accepted; device may publish)
+# Device -> verifier:
+RA_NONCE_REPLY = 0x01  # payload: nonce_V[32] || nonce_D[32]
+RA_QUOTE = 0x02  # payload: serialised AttestationQuote
+
 # We hash with the *same* libhydrogen the firmware is built against, NOT cydrogen
 # (whose bundled libhydrogen is a different version and produces different
 # digests for the same input). cheriot-demos is a sibling of cheriot-plantnode.
@@ -50,6 +78,20 @@ def _load_libhydrogen() -> ctypes.CDLL:
         ctypes.c_char_p,                   # ctx[8]
         ctypes.c_char_p,                   # key[32] or NULL
     ]
+    # Ed25519-style signing (hydro_sign), to derive the device key and verify
+    # quotes exactly as fake_tpm.cc produces them.
+    lib.hydro_sign_keygen_deterministic.restype = None
+    lib.hydro_sign_keygen_deterministic.argtypes = [
+        ctypes.c_char_p,  # hydro_sign_keypair* (pk[32] || sk[64])
+        ctypes.c_char_p,  # seed[32]
+    ]
+    lib.hydro_sign_verify.restype = ctypes.c_int
+    lib.hydro_sign_verify.argtypes = [
+        ctypes.c_char_p,                   # csig[64]
+        ctypes.c_char_p, ctypes.c_size_t,  # m, m_len
+        ctypes.c_char_p,                   # ctx[8]
+        ctypes.c_char_p,                   # pk[32]
+    ]
     lib.hydro_init()
     return lib
 
@@ -68,6 +110,124 @@ def hydro_hash(data: bytes, ctx: str, digest_size: int = IMAGE_HASH_LENGTH) -> b
     if rc != 0:
         raise RuntimeError(f"hydro_hash_hash failed (rc={rc})")
     return out.raw[:digest_size]
+
+
+def hydro_sign_verify(sig: bytes, msg: bytes, ctx: str, pk: bytes) -> bool:
+    """hydro_sign_verify(sig, m, m_len, ctx, pk) == 0 — matches fake_tpm.cc's
+    hydro_sign_create over the same message (the 32-byte quote digest)."""
+    ctx_bytes = ctx.encode()
+    if len(ctx_bytes) != 8:
+        raise ValueError("sign context must be exactly 8 bytes")
+    if len(sig) != SIGNATURE_LENGTH:
+        raise ValueError(f"signature must be {SIGNATURE_LENGTH} bytes")
+    if len(pk) != PUBLIC_KEY_LENGTH:
+        raise ValueError(f"public key must be {PUBLIC_KEY_LENGTH} bytes")
+    rc = _LIB.hydro_sign_verify(sig, msg, len(msg), ctx_bytes, pk)
+    return rc == 0
+
+
+_DEVICE_PUBKEY: bytes | None = None
+
+
+def device_signing_pubkey() -> bytes:
+    """Derive (and cache) the device's Ed25519 signing public key from the demo
+    seed compiled into fake_tpm.cc, via hydro_sign_keygen_deterministic."""
+    global _DEVICE_PUBKEY
+    if _DEVICE_PUBKEY is None:
+        keypair = ctypes.create_string_buffer(
+            PUBLIC_KEY_LENGTH + SECRET_KEY_LENGTH
+        )
+        _LIB.hydro_sign_keygen_deterministic(keypair, FAKE_TPM_SEED)
+        _DEVICE_PUBKEY = keypair.raw[:PUBLIC_KEY_LENGTH]
+    return _DEVICE_PUBKEY
+
+
+def combine_nonce(nonce_v: bytes, nonce_d: bytes) -> bytes:
+    """combined = hydro_hash(ctx="PN-COMB1", nonce_V || nonce_D, 32). Mirrors
+    crypto_combine_nonce() on the device."""
+    if len(nonce_v) != NONCE_LENGTH or len(nonce_d) != NONCE_LENGTH:
+        raise ValueError(f"each nonce must be {NONCE_LENGTH} bytes")
+    return hydro_hash(nonce_v + nonce_d, COMBINE_CONTEXT, NONCE_LENGTH)
+
+
+def deserialize_quote(buf: bytes) -> dict:
+    """Parse the wire form produced by attestation_quote_serialize():
+    slot(1) | device_id_len(1) | device_id | image_hash(32) | nonce(32) |
+    signature(64)."""
+    if len(buf) < 2:
+        raise ValueError("quote too short")
+    slot = buf[0]
+    dev_id_len = buf[1]
+    off = 2
+    device_id = buf[off:off + dev_id_len]
+    off += dev_id_len
+    image_hash = buf[off:off + IMAGE_HASH_LENGTH]
+    off += IMAGE_HASH_LENGTH
+    nonce = buf[off:off + NONCE_LENGTH]
+    off += NONCE_LENGTH
+    signature = buf[off:off + SIGNATURE_LENGTH]
+    off += SIGNATURE_LENGTH
+    if off != len(buf):
+        raise ValueError(
+            f"quote length mismatch (parsed {off}, got {len(buf)} bytes)"
+        )
+    if len(image_hash) != IMAGE_HASH_LENGTH or len(nonce) != NONCE_LENGTH:
+        raise ValueError("quote truncated")
+    if len(signature) != SIGNATURE_LENGTH:
+        raise ValueError("quote signature truncated")
+    return {
+        "slot": slot,
+        "device_id": device_id,
+        "image_hash": image_hash,
+        "nonce": nonce,
+        "signature": signature,
+    }
+
+
+def quote_digest(quote: dict) -> bytes:
+    """Rebuild the signed digest exactly as attestation.cc does:
+    hydro_hash(ctx="PN-QUOTE", device_id || slot || image_hash || nonce, 32).
+    Note device_id is the actual device_id_len bytes, not a padded field."""
+    msg = (
+        quote["device_id"]
+        + bytes([quote["slot"]])
+        + quote["image_hash"]
+        + quote["nonce"]
+    )
+    return hydro_hash(msg, QUOTE_DIGEST_CONTEXT, IMAGE_HASH_LENGTH)
+
+
+def verify_quote(
+    quote: dict, expected_combined: bytes, elf_path: str = DEFAULT_FIRMWARE_ELF
+) -> tuple[bool, list[str]]:
+    """Verify a deserialised quote: signature over the rebuilt digest, the
+    combined nonce, and the image hash. Returns (ok, reasons)."""
+    reasons: list[str] = []
+
+    digest = quote_digest(quote)
+    sig_ok = hydro_sign_verify(
+        quote["signature"], digest, SIGN_CONTEXT, device_signing_pubkey()
+    )
+    reasons.append("signature OK" if sig_ok else "signature INVALID")
+
+    nonce_ok = quote["nonce"] == expected_combined
+    reasons.append(
+        "combined nonce OK" if nonce_ok else "combined nonce MISMATCH"
+    )
+
+    try:
+        expected_img = expected_image_hash(elf_path)
+        image_ok = quote["image_hash"] == expected_img
+        reasons.append(
+            "image hash OK" if image_ok
+            else f"image hash MISMATCH (got {quote['image_hash'].hex()}, "
+                 f"expected {expected_img.hex()})"
+        )
+    except Exception as e:
+        image_ok = False
+        reasons.append(f"image hash UNVERIFIABLE ({e})")
+
+    return (sig_ok and nonce_ok and image_ok), reasons
 
 
 def _measured_length(elf: bytes) -> int:
