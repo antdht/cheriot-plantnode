@@ -36,8 +36,41 @@ enum class PolicyOutcome : uint8_t
  */
 static constexpr size_t DeviceIdMaxLength = 64;
 
+/** Maximum length for detached signature produced by attestation compartment */
+static constexpr size_t AttestationSignatureMaxLength = 64; // hydro_sign_BYTES
+
+/** Length of the firmware-image measurement (hydro_hash_BYTES). */
+static constexpr size_t AttestationImageHashLength = 32;
+
+/** Length of the verifier-supplied freshness challenge. */
+static constexpr size_t AttestationNonceLength = 32;
+
+/** Length of the digest that fake_tpm actually signs (hydro_hash_BYTES). */
+static constexpr size_t AttestationDigestLength = 32;
+
 /**
- * Maximum length of a detached signature produced by the attestation
- * compartment.
+ * Remote-attestation quote produced by the attestation compartment.
+ *
+ * Pointer-free plain data, safe for cross-compartment transfer and for
+ * serialisation onto the wire. The verifier reconstructs the signed digest
+ * from these fields (see attestation_quote_digest) and checks `signature`
+ * against the device public key, then compares `image_hash` to the expected
+ * hash of the audited firmware build.
  */
-static constexpr size_t AttestationSignatureMaxLength = 64;
+struct AttestationQuote
+{
+	uint8_t slot;          // booted software-slot index ("slot 2" == index 1)
+	uint8_t device_id_len; // bytes of device_id actually in use
+	char    device_id[DeviceIdMaxLength];           // e.g. "plantnode-001"
+	uint8_t image_hash[AttestationImageHashLength]; // hydro_hash of loaded ELF
+	uint8_t nonce[AttestationNonceLength];          // verifier freshness nonce
+	uint8_t signature[AttestationSignatureMaxLength]; // fake_tpm signature
+};
+
+/**
+ * Serialised wire length of an AttestationQuote:
+ *   slot(1) + device_id_len(1) + device_id + image_hash + nonce + signature.
+ */
+static constexpr size_t AttestationQuoteWireMaxLength =
+  1 + 1 + DeviceIdMaxLength + AttestationImageHashLength +
+  AttestationNonceLength + AttestationSignatureMaxLength;

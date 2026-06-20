@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "core_logic.h"
+#include "attestation.h"
 #include "comms.h"
 #include "crypto.h"
 #include "data_processing.h"
@@ -41,6 +42,39 @@ void __cheri_compartment("core_logic") core_entry()
 			else
 			{
 				Debug::log("Key packet published ({} bytes)", kxLen);
+			}
+		}
+	}
+
+	// Remote attestation (one-shot, triggered at network connection).
+	//
+	// Authentic-execution path: core_logic (no capabilities) -> attestation
+	// (sole holder of the SPI-flash capability; measures the booted slot) ->
+	// back to core_logic -> comms (sole holder of the MQTT handle; publishes).
+	//
+	// For now we publish only the raw image measurement (the bare hash of the
+	// booted slot's ELF) on plantnode/attestation, so the verifier can confirm
+	// the running firmware by recomputing the same hash offline. The full signed
+	// quote (attestation_quote -> fake_tpm) stays available for the next step,
+	// when a verifier nonce arrives on plantnode/commands.
+	{
+		uint8_t imageHash[AttestationImageHashLength];
+		size_t  hashLen = 0;
+		int     ret     = attestation_measure_image(imageHash, &hashLen);
+		if (ret != 0)
+		{
+			Debug::log("attestation_measure_image failed: {}", ret);
+		}
+		else
+		{
+			ret = comms_publish_attestation(imageHash, hashLen);
+			if (ret != 0)
+			{
+				Debug::log("comms_publish_attestation failed: {}", ret);
+			}
+			else
+			{
+				Debug::log("Image hash published ({} bytes)", hashLen);
 			}
 		}
 	}

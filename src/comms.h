@@ -48,8 +48,9 @@ int __cheri_compartment("comms")
   comms_publish_telemetry(const SensorReading *reading);
 
 /**
- * Publish a signed attestation blob to the remote verifier topic
- * (plantnode/attestation). Called by core_logic after attestation_sign().
+ * Publish a serialised attestation quote to the remote verifier topic
+ * (plantnode/attestation). Called by core_logic after attestation_quote()
+ * (see attestation_quote_serialize for the wire format).
  *
  * Returns 0 on success, negative errno on failure.
  */
