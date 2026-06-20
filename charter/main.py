@@ -1,4 +1,5 @@
 import datetime
+import threading
 import tkinter
 from dataclasses import dataclass, field
 from queue import Queue
@@ -8,6 +9,7 @@ import paho.mqtt.client as mqtt
 from paho.mqtt import client as mqtt_lib
 
 from config import AppConfig
+from attestation import DEFAULT_FIRMWARE_ELF, expected_image_hash
 from encryption import (
     load_verifier_keypair,
     recover_session_keys,
@@ -31,6 +33,9 @@ class AppState:
     config: AppConfig
     logger: CsvLogger
     verifier_kp: cydrogen.KxPair
+    # Raw 32-byte image hashes received on plantnode/attestation, handed off to
+    # the attestation verifier thread.
+    attestation_queue: Queue[bytes] = field(default_factory=Queue)
     sessions: dict[str, SensorSession] = field(default_factory=dict)
     mqtt_client: Optional[mqtt_lib.Client] = None
 
@@ -54,9 +59,13 @@ def on_connect(
         return
 
     prefix = userdata["state"].config.mqtt.topic_prefix
-    print(f"Connected (rc={rc}), subscribing to {prefix}/keys/# and {prefix}/telemetry")
+    print(
+        f"Connected (rc={rc}), subscribing to {prefix}/keys/#, "
+        f"{prefix}/telemetry and {prefix}/attestation"
+    )
     client.subscribe(f"{prefix}/keys/#")
     client.subscribe(f"{prefix}/telemetry")
+    client.subscribe(f"{prefix}/attestation")
 
 
 def on_message(
@@ -126,10 +135,51 @@ def on_message(
             state.logger.log(device_id, reading)
             enqueue_for_plots(device_id, reading, state)
 
+        # ── Remote-attestation measurement: plantnode/attestation ─────────
+        elif topic == f"{prefix}/attestation":
+            # Hand the raw 32-byte hash to the verifier thread; keep the MQTT
+            # network callback from blocking on the firmware hash computation.
+            state.attestation_queue.put(bytes(payload_bytes))
+
     except cydrogen.DecryptException as e:
         print(f"Decryption failed on topic {topic}: {e}")
     except Exception as e:
         print(f"Unexpected error processing message on {topic}: {e}")
+
+
+def attestation_worker(state: AppState) -> None:
+    """
+    Verifier thread: pulls raw image hashes received on plantnode/attestation,
+    recomputes the expected hash of the flashed firmware, and logs whether they
+    match. Runs until the process exits (daemon thread).
+    """
+    while True:
+        received = state.attestation_queue.get()
+        if len(received) != 32:
+            print(
+                f"[attestation] bad payload length "
+                f"({len(received)} bytes, expected 32)"
+            )
+            continue
+        try:
+            expected = expected_image_hash()
+        except FileNotFoundError:
+            print(
+                f"[attestation] cannot verify: firmware artifact not found at "
+                f"{DEFAULT_FIRMWARE_ELF}"
+            )
+            continue
+        except Exception as e:
+            print(f"[attestation] cannot compute expected hash: {e}")
+            continue
+
+        if received == expected:
+            print(f"[attestation] OK — running firmware matches ({received.hex()})")
+        else:
+            print(
+                f"[attestation] MISMATCH — received={received.hex()} "
+                f"expected={expected.hex()}"
+            )
 
 
 def init_mqtt(state: AppState) -> mqtt.Client:
@@ -211,6 +261,13 @@ def main() -> None:
         logger=CsvLogger(config.logger.csv_file_name),
         verifier_kp=verifier_kp,
     )
+
+    threading.Thread(
+        target=attestation_worker,
+        args=(state,),
+        name="attestation-verifier",
+        daemon=True,
+    ).start()
 
     client = init_mqtt(state)
     state.mqtt_client = client
