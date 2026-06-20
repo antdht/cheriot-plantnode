@@ -9,6 +9,20 @@
 #include <stdint.h>
 
 /**
+ * attestation, measurer in the remote-attestation flow.
+ *
+ * This is the ONLY compartment that holds a capability to the SPI flash device,
+ * and the ONLY compartment permitted to call fake_tpm_sign (both enforced by a
+ * cheriot-audit policy). It reads the firmware image of the booted slot back
+ * out of flash, hashes it, builds a quote over (device id, slot, image hash,
+ * verifier nonce), and asks fake_tpm to sign the resulting digest.
+ *
+ * It is deliberately tiny and non-network-facing: it takes a nonce as plain
+ * data and returns a quote. It never touches the network, sensors, or any
+ * secret. The signing key lives only in fake_tpm.
+ */
+
+/**
  * Write the device identity string (e.g. "plantnode-001") to id_out.
  * id_out must be at least DeviceIdMaxLength bytes.
  * Returns 0 on success, negative errno on failure.
@@ -17,12 +31,54 @@ int __cheri_compartment("attestation")
   attestation_get_device_id(char *id_out, size_t *id_len);
 
 /**
- * Sign data using the device's private key.
- * TODO: not yet implemented — returns -ENOSYS.
- * sig_out must be at least AttestationSignatureMaxLength bytes.
+ * Measure the firmware image of the booted slot: read the loaded ELF back out
+ * of SPI flash and hash it (hydro_hash). hashOut must be at least
+ * AttestationImageHashLength bytes. Exposed independently of quoting so the
+ * measurement can be exercised on its own.
  * Returns 0 on success, negative errno on failure.
  */
-int __cheri_compartment("attestation") attestation_sign(const void *data,
-                                                        size_t      len,
-                                                        uint8_t    *sig_out,
-                                                        size_t     *sig_len);
+int __cheri_compartment("attestation")
+  attestation_measure_image(uint8_t *hashOut, size_t *hashLen);
+
+/**
+ * Produce a signed attestation quote for the given verifier nonce.
+ * nonceLen must equal AttestationNonceLength. Measures the image, builds the
+ * digest, and signs it via fake_tpm. Fills quoteOut.
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("attestation")
+  attestation_quote(const uint8_t    *nonce,
+                    size_t            nonceLen,
+                    AttestationQuote *quoteOut);
+
+/**
+ * Serialise a quote to its wire form (see AttestationQuoteWireMaxLength):
+ *   slot(1) | device_id_len(1) | device_id | image_hash | nonce | signature
+ * out must be at least AttestationQuoteWireMaxLength bytes. Returns the number
+ * of bytes written. Pure data shuffling (no capabilities), so it lives in the
+ * header for callers that publish the quote.
+ */
+static inline size_t attestation_quote_serialize(const AttestationQuote *q,
+                                                 uint8_t                *out)
+{
+	size_t p = 0;
+	out[p++] = q->slot;
+	out[p++] = q->device_id_len;
+	for (size_t i = 0; i < q->device_id_len; i++)
+	{
+		out[p++] = (uint8_t)q->device_id[i];
+	}
+	for (size_t i = 0; i < AttestationImageHashLength; i++)
+	{
+		out[p++] = q->image_hash[i];
+	}
+	for (size_t i = 0; i < AttestationNonceLength; i++)
+	{
+		out[p++] = q->nonce[i];
+	}
+	for (size_t i = 0; i < AttestationSignatureMaxLength; i++)
+	{
+		out[p++] = q->signature[i];
+	}
+	return p;
+}

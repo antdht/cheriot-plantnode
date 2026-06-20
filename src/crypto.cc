@@ -32,6 +32,12 @@ static const uint8_t kVerifierPublicKey[hydro_kx_PUBLICKEYBYTES] = {
 static const char kBoxCtx[hydro_secretbox_CONTEXTBYTES] =
   {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
 
+// Context for combining the verifier and device nonces. Mirrors
+// AttestationCombineContext ("PN-COMB1"); kept here too so the hydro_hash call
+// has an 8-byte char buffer of the exact value the verifier uses.
+static const char kCombineCtx[hydro_hash_CONTEXTBYTES] =
+  {'P', 'N', '-', 'C', 'O', 'M', 'B', '1'};
+
 // Per-boot session keys (both directions).
 static uint8_t  s_sessionTxKey[hydro_kx_SESSIONKEYBYTES];
 static uint8_t  s_sessionRxKey[hydro_kx_SESSIONKEYBYTES];
@@ -46,6 +52,38 @@ static void ensure_init()
 		hydro_init();
 		sInitDone = true;
 	}
+}
+
+// Prepend the 8-byte little-endian msg_id and secretbox-encrypt `plain` under
+// the session TX key. `out` must hold 8 + hydro_secretbox_HEADERBYTES + plainLen
+// bytes. Shared by crypto_encrypt (telemetry) and crypto_encrypt_bytes (RA).
+static int encrypt_plain(const uint8_t *plain,
+                         size_t         plainLen,
+                         uint8_t       *out,
+                         size_t        *outLen)
+{
+	if (!s_sessionReady)
+	{
+		Debug::log("encrypt_plain: session not ready");
+		return -ENOSYS;
+	}
+
+	uint64_t msgId = s_msgId;
+	for (int i = 0; i < 8; i++)
+	{
+		out[i] = (uint8_t)(msgId >> (8 * i));
+	}
+
+	if (hydro_secretbox_encrypt(out + 8, plain, plainLen, msgId, kBoxCtx,
+	                            s_sessionTxKey) != 0)
+	{
+		Debug::log("encrypt_plain: secretbox encrypt failed");
+		return -EIO;
+	}
+
+	s_msgId++;
+	*outLen = 8 + hydro_secretbox_HEADERBYTES + plainLen;
+	return 0;
 }
 
 int __cheri_compartment("crypto")
@@ -165,24 +203,56 @@ int __cheri_compartment("crypto")
 	}
 	size_t plainLen = pos;
 
-	// Write msg_id as 8 little-endian bytes.
-	uint64_t msgId = s_msgId;
-	for (int i = 0; i < 8; i++)
+	int ret = encrypt_plain((const uint8_t *)plain, plainLen, outBuf, outLen);
+	if (ret != 0)
 	{
-		outBuf[i] = (uint8_t)(msgId >> (8 * i));
+		return ret;
 	}
 
-	if (hydro_secretbox_encrypt(
-	      outBuf + 8, plain, plainLen, msgId, kBoxCtx, s_sessionTxKey) != 0)
+	Debug::log("Encrypted telemetry: {} bytes", *outLen);
+	return 0;
+}
+
+int __cheri_compartment("crypto") crypto_encrypt_bytes(const uint8_t *in,
+                                                       size_t         inLen,
+                                                       uint8_t       *out,
+                                                       size_t        *outLen)
+{
+	if (!in || !out || !outLen)
 	{
-		Debug::log("crypto_encrypt: secretbox encrypt failed");
-		return -EIO;
+		return -EINVAL;
 	}
+	ensure_init();
+	return encrypt_plain(in, inLen, out, outLen);
+}
 
-	s_msgId++;
-	*outLen = 8 + hydro_secretbox_HEADERBYTES + plainLen;
+int __cheri_compartment("crypto") crypto_gen_nonce(uint8_t *out, size_t len)
+{
+	if (!out)
+	{
+		return -EINVAL;
+	}
+	ensure_init();
+	hydro_random_buf(out, len);
+	return 0;
+}
 
-	Debug::log("Encrypted payload: msg_id={}, {} bytes", msgId, *outLen);
+int __cheri_compartment("crypto") crypto_combine_nonce(const uint8_t *nonceV,
+                                                       const uint8_t *nonceD,
+                                                       uint8_t       *out)
+{
+	if (!nonceV || !nonceD || !out)
+	{
+		return -EINVAL;
+	}
+	ensure_init();
+
+	uint8_t buf[AttestationNonceLength * 2];
+	memcpy(buf, nonceV, AttestationNonceLength);
+	memcpy(buf + AttestationNonceLength, nonceD, AttestationNonceLength);
+
+	hydro_hash_hash(out, AttestationNonceLength, buf, sizeof(buf), kCombineCtx,
+	                nullptr);
 	return 0;
 }
 
@@ -223,11 +293,13 @@ int __cheri_compartment("crypto") crypto_decrypt(const uint8_t *inBuf,
 	if (hydro_secretbox_decrypt(
 	      plainOut, inBuf + 8, cipherLen, msgId, kBoxCtx, s_sessionRxKey) != 0)
 	{
-		Debug::log("crypto_decrypt: MAC verification failed");
+		// No log here: on the shared plantnode/attestation topic the device
+		// receives its own published replies back (encrypted under the TX key),
+		// which fail this MAC by design. Callers that care log -EBADMSG.
 		return -EBADMSG;
 	}
 
 	*plainLen = decryptedLen;
-	Debug::log("Decrypted command: msg_id={}, {} bytes", msgId, *plainLen);
+	Debug::log("Decrypted message: msg_id={}, {} bytes", msgId, *plainLen);
 	return 0;
 }

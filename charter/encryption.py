@@ -51,6 +51,26 @@ def decrypt_telemetry(session_rx: bytes, raw: bytes) -> dict:
     return json.loads(plaintext)
 
 
+def decrypt_message(rx_key: bytes, raw: bytes) -> bytes:
+    """
+    Decrypt a binary message produced by the device's crypto_encrypt_bytes()
+    (raw bytes, not JSON). Same wire format as telemetry:
+    [8 bytes msg_id, little-endian][hydro_secretbox ciphertext].
+
+    Raises cydrogen.DecryptException on MAC failure — used by the RA handler to
+    skip the verifier's own echoed challenges (encrypted under the tx key).
+    """
+    if len(raw) < 8:
+        raise ValueError(f"Message too short: {len(raw)} bytes")
+
+    msg_id = int.from_bytes(raw[:8], "little")
+    ciphertext = raw[8:]
+
+    key = cydrogen.SecretBoxKey(rx_key)
+    sb = cydrogen.SecretBox(key)
+    return bytes(sb.decrypt(ciphertext, msg_id=msg_id))
+
+
 def encrypt_command(tx_key: bytes, msg_id: int, plaintext: bytes) -> bytes:
     """
     Encrypt a command to send to the device.
