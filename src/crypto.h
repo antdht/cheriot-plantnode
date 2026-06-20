@@ -12,6 +12,8 @@
 constexpr size_t CryptoKxPacketLen = 48;
 // 8-byte msg_id prefix + hydro_secretbox_HEADERBYTES (36) + max plaintext (128)
 constexpr size_t CryptoEncryptedMaxLen = 8 + 36 + 128;
+// Same envelope, sized for the largest RA handshake plaintext (tag + quote).
+constexpr size_t CryptoRaEncryptedMaxLen = 8 + 36 + RaPlaintextMaxLength;
 
 /**
  * One-time boot: Noise-N KX step 1 using the verifier's compiled-in public key.
@@ -41,3 +43,32 @@ int __cheri_compartment("crypto") crypto_decrypt(const uint8_t *inBuf,
                                                  size_t         inLen,
                                                  uint8_t       *plainOut,
                                                  size_t        *plainLen);
+
+/**
+ * Encrypt an arbitrary byte blob with the session TX key (same envelope as
+ * crypto_encrypt: [8-byte msg_id LE][hydro_secretbox header + ciphertext]).
+ * Used for the remote-attestation handshake replies. out must be at least
+ * 8 + hydro_secretbox_HEADERBYTES + inLen bytes (see CryptoRaEncryptedMaxLen).
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("crypto") crypto_encrypt_bytes(const uint8_t *in,
+                                                       size_t         inLen,
+                                                       uint8_t       *out,
+                                                       size_t        *outLen);
+
+/**
+ * Fill `out` with `len` cryptographically random bytes (hydro_random_buf).
+ * Used to generate the device's own attestation nonce.
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("crypto") crypto_gen_nonce(uint8_t *out, size_t len);
+
+/**
+ * Combine the verifier and device nonces into the single nonce the quote binds
+ * to: out = hydro_hash(ctx="PN-COMB1", nonceV ‖ nonceD, 32). nonceV, nonceD and
+ * out are each AttestationNonceLength bytes. Must match the verifier exactly.
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("crypto") crypto_combine_nonce(const uint8_t *nonceV,
+                                                       const uint8_t *nonceD,
+                                                       uint8_t       *out);

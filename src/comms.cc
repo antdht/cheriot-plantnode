@@ -86,6 +86,14 @@ constexpr std::string_view TopicPing{"plantnode/ping"};
 static MQTTConnection s_handle       = nullptr;
 static volatile int   s_ack_received = 0;
 
+// Single-slot buffer for the most recent decrypted remote-attestation message
+// received on plantnode/attestation. core_logic drains it via
+// comms_take_ra_message and runs the handshake state machine outside the MQTT
+// callback (avoiding re-entrant mqtt_run during a publish).
+static uint8_t       s_raBuf[256];
+static size_t        s_raLen     = 0;
+static volatile bool s_raPending = false;
+
 // Callbacks
 
 void __cheri_callback publishCallback(const char *topicName,
@@ -110,8 +118,12 @@ void __cheri_callback publishCallback(const char *topicName,
 	Debug::log("Incoming message on topic '{}'",
 	           std::string_view{topicName, topicNameLength});
 
-	if (std::string_view{topicName, topicNameLength} == TopicCommands)
+	std::string_view topic{topicName, topicNameLength};
+
+	if (topic == TopicCommands)
 	{
+		// Reserved for a future remote-control feature, unrelated to
+		// attestation. Decrypt and drop for now.
 		uint8_t plainBuf[256];
 		size_t  plainLen = 0;
 		int     ret      = crypto_decrypt(static_cast<const uint8_t *>(payload),
@@ -125,6 +137,38 @@ void __cheri_callback publishCallback(const char *topicName,
 		}
 		Debug::log("Decrypted command ({} bytes) - dispatch TODO", plainLen);
 		// TODO: parse and dispatch plaintext command to policy_engine
+	}
+	else if (topic == TopicAttestation)
+	{
+		// All remote-attestation handshake traffic shares this topic, both
+		// directions. We also receive our own published replies back, but those
+		// are encrypted under the device TX key and so fail to decrypt with the
+		// RX key — those echoes are dropped quietly below.
+		uint8_t plainBuf[256];
+		size_t  plainLen = 0;
+		int     ret      = crypto_decrypt(static_cast<const uint8_t *>(payload),
+		                                  payloadLength,
+		                                  plainBuf,
+		                                  &plainLen);
+		if (ret != 0)
+		{
+			// Most likely our own echo (wrong key direction) — ignore quietly.
+			return;
+		}
+		if (s_raPending)
+		{
+			Debug::log("RA message dropped: previous one not yet drained");
+			return;
+		}
+		if (plainLen > sizeof(s_raBuf))
+		{
+			Debug::log("RA message too large ({} bytes)", plainLen);
+			return;
+		}
+		memcpy(s_raBuf, plainBuf, plainLen);
+		s_raLen     = plainLen;
+		s_raPending = true;
+		Debug::log("RA message buffered ({} bytes)", plainLen);
 	}
 }
 
@@ -249,20 +293,32 @@ int __cheri_compartment("comms") comms_connect()
 	}
 	Debug::log("Connected to MQTT broker!");
 
-	Debug::log("Subscribing to commands topic '{}'...", TopicCommands);
+	Debug::log("Subscribing to '{}' and '{}'...", TopicCommands,
+	           TopicAttestation);
 	s_ack_received = 0;
 	t              = UnlimitedTimeout;
 	int ret        = mqtt_subscribe(
 	  &t, s_handle, 1, TopicCommands.data(), TopicCommands.size());
 	if (ret < 0)
 	{
-		Debug::log("Subscribe failed: {}", ret);
+		Debug::log("Subscribe to commands failed: {}", ret);
 		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), s_handle);
 		s_handle = nullptr;
 		return ret;
 	}
 
-	ret = wait_for_ack(1);
+	t   = UnlimitedTimeout;
+	ret = mqtt_subscribe(
+	  &t, s_handle, 1, TopicAttestation.data(), TopicAttestation.size());
+	if (ret < 0)
+	{
+		Debug::log("Subscribe to attestation failed: {}", ret);
+		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), s_handle);
+		s_handle = nullptr;
+		return ret;
+	}
+
+	ret = wait_for_ack(2);
 	if (ret < 0)
 	{
 		Debug::log("SUBACK wait failed: {}", ret);
@@ -270,7 +326,7 @@ int __cheri_compartment("comms") comms_connect()
 		s_handle = nullptr;
 		return ret;
 	}
-	Debug::log("Subscribed to '{}'.", TopicCommands);
+	Debug::log("Subscribed to '{}' and '{}'.", TopicCommands, TopicAttestation);
 
 	display_connected_network();
 
@@ -353,9 +409,9 @@ int __cheri_compartment("comms")
 }
 
 int __cheri_compartment("comms")
-  comms_publish_attestation(const uint8_t *sig, size_t sig_len)
+  comms_publish_attestation(const uint8_t *bytes, size_t len)
 {
-	if (!CHERI::check_pointer(sig, sig_len))
+	if (!CHERI::check_pointer(bytes, len))
 	{
 		return -EINVAL;
 	}
@@ -363,8 +419,25 @@ int __cheri_compartment("comms")
 	{
 		return -ENOTCONN;
 	}
-	Debug::log("Publishing attestation ({} bytes)...", sig_len);
-	return publish_and_wait(TopicAttestation, sig, sig_len);
+	Debug::log("Publishing attestation message ({} bytes)...", len);
+	return publish_and_wait(TopicAttestation, bytes, len);
+}
+
+int __cheri_compartment("comms")
+  comms_take_ra_message(uint8_t *out, size_t *outLen)
+{
+	if (!out || !outLen)
+	{
+		return -EINVAL;
+	}
+	if (!s_raPending)
+	{
+		return -ENOENT;
+	}
+	memcpy(out, s_raBuf, s_raLen);
+	*outLen     = s_raLen;
+	s_raPending = false;
+	return 0;
 }
 
 int __cheri_compartment("comms") comms_poll()
