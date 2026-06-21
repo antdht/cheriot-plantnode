@@ -12,13 +12,13 @@ using Debug = ConditionalDebug<true, "PlantNode Pump">;
 // gpio_arduino)
 // TODO: define which GPIO pin drives the pump relay
 
-static bool s_pump_state = false;
+static bool sPumpState = false;
 
 int __cheri_compartment("pump_driver") pump_on()
 {
 	Debug::log("Pump ON");
 	// TODO: set GPIO pin high
-	s_pump_state = true;
+	sPumpState = true;
 	return -ENOSYS;
 }
 
@@ -26,16 +26,16 @@ int __cheri_compartment("pump_driver") pump_off()
 {
 	Debug::log("Pump OFF");
 	// TODO: set GPIO pin low
-	s_pump_state = false;
+	sPumpState = false;
 	return -ENOSYS;
 }
 
-int __cheri_compartment("pump_driver") pump_get_state(bool *state_out)
+int __cheri_compartment("pump_driver") pump_get_state(bool *stateOut)
 {
-	if (!state_out)
+	if (!stateOut)
 	{
 		return -EINVAL;
 	}
-	*state_out = s_pump_state;
+	*stateOut = sPumpState;
 	return 0;
 }

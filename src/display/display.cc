@@ -136,7 +136,7 @@ void __cheri_compartment("display")
 	// "Temp: 23.5 C"
 	p  = line;
 	p  = append_str(p, "Temp: ");
-	p  = append_decimal(p, reading->temperature_cx10, 10);
+	p  = append_decimal(p, reading->temperatureCx10, 10);
 	p  = append_str(p, " C");
 	*p = '\0';
 	l.draw_str(
@@ -145,7 +145,7 @@ void __cheri_compartment("display")
 	// "Hum:  45.5 %"
 	p  = line;
 	p  = append_str(p, "Hum:  ");
-	p  = append_decimal(p, (int)reading->humidity_rx10, 10);
+	p  = append_decimal(p, (int)reading->humidityRx10, 10);
 	p  = append_str(p, " %");
 	*p = '\0';
 	l.draw_str(
@@ -154,7 +154,7 @@ void __cheri_compartment("display")
 	// "Moist: 1234"
 	p  = line;
 	p  = append_str(p, "Moist: ");
-	p  = append_uint(p, reading->moisture_raw);
+	p  = append_uint(p, reading->moistureRaw);
 	*p = '\0';
 	l.draw_str(
 	  {4, 62}, line, Color::Black, Color::White, Font::LucidaConsole_10pt);

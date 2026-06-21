@@ -31,6 +31,6 @@ PolicyOutcome __cheri_compartment("policy_engine")
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("policy_engine")
-  policy_set_thresholds(uint16_t moisture_low,
-                        uint16_t moisture_high,
-                        int16_t  temp_max_cx10);
+  policy_set_thresholds(uint16_t moistureLow,
+                        uint16_t moistureHigh,
+                        int16_t  tempMaxCx10);

@@ -30,25 +30,25 @@ namespace
 		AwaitingApproval,
 	};
 
-	RaState s_raState = RaState::Idle;
-	uint8_t s_nonceV[AttestationNonceLength]; // verifier nonce from challenge 1
-	uint8_t s_nonceD[AttestationNonceLength]; // our own nonce sent in the reply
+	RaState sRaState = RaState::Idle;
+	uint8_t sNonceV[AttestationNonceLength]; // verifier nonce from challenge 1
+	uint8_t sNonceD[AttestationNonceLength]; // our own nonce sent in the reply
 	uint8_t
-	  s_lastCombined[AttestationNonceLength]; // combined nonce of last quote
+	  sLastCombined[AttestationNonceLength]; // combined nonce of last quote
 
 	// Latched once the verifier approves a quote. The board withholds all
 	// telemetry until this is set, so no sensor data leaves the device until it
 	// has proven what firmware it is running and the verifier has accepted it.
-	bool s_attested = false;
+	bool sAttested = false;
 
 	// RA scratch buffers kept off the (small, TLS-shared) core_logic stack.
 	// Safe as statics: only the single core_logic thread touches them, and the
 	// handshake is strictly sequential (one message handled at a time).
-	uint8_t s_raPlain[RaPlaintextMaxLength];  // plaintext [type][payload]
-	uint8_t s_raEnc[CryptoRaEncryptedMaxLen]; // secretbox-encrypted message
-	uint8_t s_raWire[AttestationQuoteWireMaxLength]; // serialised quote
-	uint8_t s_raDrain[256];     // most recent message drained from comms
-	AttestationQuote s_raQuote; // quote being built
+	uint8_t sRaPlain[RaPlaintextMaxLength];  // plaintext [type][payload]
+	uint8_t sRaEnc[CryptoRaEncryptedMaxLen]; // secretbox-encrypted message
+	uint8_t sRaWire[AttestationQuoteWireMaxLength]; // serialised quote
+	uint8_t sRaDrain[256];     // most recent message drained from comms
+	AttestationQuote sRaQuote; // quote being built
 
 	// Handle one decrypted RA message (plaintext = [type][payload]). Runs in
 	// the core_logic loop, never inside the MQTT callback, so publishing a
@@ -73,41 +73,41 @@ namespace
 					           payloadLen);
 					return;
 				}
-				memcpy(s_nonceV, payload, AttestationNonceLength);
-				if (crypto_gen_nonce(s_nonceD, AttestationNonceLength) != 0)
+				memcpy(sNonceV, payload, AttestationNonceLength);
+				if (crypto_gen_nonce(sNonceD, AttestationNonceLength) != 0)
 				{
 					Debug::log("RA challenge1: nonce generation failed");
 					return;
 				}
 
 				// Reply: [RaNonceReply][nonce_V][nonce_D]
-				size_t msgLen       = 0;
-				s_raPlain[msgLen++] = RaNonceReply;
-				memcpy(s_raPlain + msgLen, s_nonceV, AttestationNonceLength);
+				size_t msgLen      = 0;
+				sRaPlain[msgLen++] = RaNonceReply;
+				memcpy(sRaPlain + msgLen, sNonceV, AttestationNonceLength);
 				msgLen += AttestationNonceLength;
-				memcpy(s_raPlain + msgLen, s_nonceD, AttestationNonceLength);
+				memcpy(sRaPlain + msgLen, sNonceD, AttestationNonceLength);
 				msgLen += AttestationNonceLength;
 
 				size_t encLen = 0;
-				if (crypto_encrypt_bytes(s_raPlain, msgLen, s_raEnc, &encLen) !=
+				if (crypto_encrypt_bytes(sRaPlain, msgLen, sRaEnc, &encLen) !=
 				    0)
 				{
 					Debug::log("RA challenge1: encrypt reply failed");
 					return;
 				}
-				if (comms_publish_attestation(s_raEnc, encLen) != 0)
+				if (comms_publish_attestation(sRaEnc, encLen) != 0)
 				{
 					Debug::log("RA challenge1: publish reply failed");
 					return;
 				}
-				s_raState = RaState::AwaitingCombined;
+				sRaState = RaState::AwaitingCombined;
 				Debug::log("RA: nonce reply sent, awaiting combined nonce");
 				break;
 			}
 
 			case RaChallenge2:
 			{
-				if (s_raState != RaState::AwaitingCombined)
+				if (sRaState != RaState::AwaitingCombined)
 				{
 					Debug::log(
 					  "RA challenge2: unexpected (no pending challenge1)");
@@ -117,54 +117,54 @@ namespace
 				{
 					Debug::log("RA challenge2: bad payload length {}",
 					           payloadLen);
-					s_raState = RaState::Idle;
+					sRaState = RaState::Idle;
 					return;
 				}
 
 				uint8_t expected[AttestationNonceLength];
-				if (crypto_combine_nonce(s_nonceV, s_nonceD, expected) != 0)
+				if (crypto_combine_nonce(sNonceV, sNonceD, expected) != 0)
 				{
 					Debug::log("RA challenge2: combine failed");
-					s_raState = RaState::Idle;
+					sRaState = RaState::Idle;
 					return;
 				}
 				if (memcmp(expected, payload, AttestationNonceLength) != 0)
 				{
 					Debug::log("RA challenge2: combined nonce mismatch");
-					s_raState = RaState::Idle;
+					sRaState = RaState::Idle;
 					return;
 				}
 
 				// Freshness proven on both sides — measure, build and sign a
 				// quote bound to the combined nonce.
 				if (attestation_quote(
-				      expected, AttestationNonceLength, &s_raQuote) != 0)
+				      expected, AttestationNonceLength, &sRaQuote) != 0)
 				{
 					Debug::log("RA challenge2: attestation_quote failed");
-					s_raState = RaState::Idle;
+					sRaState = RaState::Idle;
 					return;
 				}
 
 				size_t wireLen =
-				  attestation_quote_serialize(&s_raQuote, s_raWire);
+				  attestation_quote_serialize(&sRaQuote, sRaWire);
 
-				size_t msgLen       = 0;
-				s_raPlain[msgLen++] = RaQuote;
-				memcpy(s_raPlain + msgLen, s_raWire, wireLen);
+				size_t msgLen      = 0;
+				sRaPlain[msgLen++] = RaQuote;
+				memcpy(sRaPlain + msgLen, sRaWire, wireLen);
 				msgLen += wireLen;
 
 				size_t encLen = 0;
-				if (crypto_encrypt_bytes(s_raPlain, msgLen, s_raEnc, &encLen) !=
+				if (crypto_encrypt_bytes(sRaPlain, msgLen, sRaEnc, &encLen) !=
 				    0)
 				{
 					Debug::log("RA challenge2: encrypt quote failed");
-					s_raState = RaState::Idle;
+					sRaState = RaState::Idle;
 					return;
 				}
-				if (comms_publish_attestation(s_raEnc, encLen) != 0)
+				if (comms_publish_attestation(sRaEnc, encLen) != 0)
 				{
 					Debug::log("RA challenge2: publish quote failed");
-					s_raState = RaState::Idle;
+					sRaState = RaState::Idle;
 					break;
 				}
 				Debug::log("RA: signed quote published ({} bytes), awaiting "
@@ -172,14 +172,14 @@ namespace
 				           encLen);
 				// Remember which combined nonce this quote was bound to so the
 				// approval can be matched to it, and wait for the verdict.
-				memcpy(s_lastCombined, expected, AttestationNonceLength);
-				s_raState = RaState::AwaitingApproval;
+				memcpy(sLastCombined, expected, AttestationNonceLength);
+				sRaState = RaState::AwaitingApproval;
 				break;
 			}
 
 			case RaApproved:
 			{
-				if (s_raState != RaState::AwaitingApproval)
+				if (sRaState != RaState::AwaitingApproval)
 				{
 					Debug::log("RA approval: unexpected (no quote awaiting)");
 					return;
@@ -190,15 +190,14 @@ namespace
 					           payloadLen);
 					return;
 				}
-				if (memcmp(payload, s_lastCombined, AttestationNonceLength) !=
-				    0)
+				if (memcmp(payload, sLastCombined, AttestationNonceLength) != 0)
 				{
 					Debug::log(
 					  "RA approval: combined nonce mismatch — ignored");
 					return;
 				}
-				s_attested = true;
-				s_raState  = RaState::Idle;
+				sAttested = true;
+				sRaState  = RaState::Idle;
 				Debug::log("RA: attestation approved — telemetry enabled");
 				break;
 			}
@@ -213,9 +212,9 @@ namespace
 	void drain_ra_messages()
 	{
 		size_t len = 0;
-		while (comms_take_ra_message(s_raDrain, &len) == 0)
+		while (comms_take_ra_message(sRaDrain, &len) == 0)
 		{
-			handle_ra_message(s_raDrain, len);
+			handle_ra_message(sRaDrain, len);
 		}
 	}
 
@@ -260,7 +259,7 @@ void __cheri_compartment("core_logic") core_entry()
 	// core_logic -> comms (sole MQTT holder; publishes).
 
 	// Timestamp of the most recent pump activation; surfaced in every
-	// telemetry payload via the reading's last_watering field. 0 = never.
+	// telemetry payload via the reading's lastWatering field. 0 = never.
 	uint32_t lastWatering = 0;
 
 	while (true)
@@ -289,10 +288,10 @@ void __cheri_compartment("core_logic") core_entry()
 		// Publish telemetry (comms encrypts via crypto compartment), but only
 		// once remote attestation has completed and the verifier has approved
 		// the quote. No sensor data leaves the device before then.
-		if (s_attested)
+		if (sAttested)
 		{
-			reading.last_watering = lastWatering;
-			int ret               = comms_publish_telemetry(&reading);
+			reading.lastWatering = lastWatering;
+			int ret              = comms_publish_telemetry(&reading);
 			if (ret != 0)
 			{
 				Debug::log("comms_publish_telemetry failed: {}", ret);

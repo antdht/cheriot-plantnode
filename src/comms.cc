@@ -58,13 +58,13 @@ constexpr bool UseIPv6 = CHERIOT_RTOS_OPTION_IPv6;
 DECLARE_AND_DEFINE_ALLOCATOR_CAPABILITY(mqttMalloc, 32 * 1024);
 
 constexpr size_t                                 MQTTMaximumClientLength = 23;
-constexpr std::string_view                       clientIDPrefix{"cheriotMQTT"};
+constexpr std::string_view                       ClientIdPrefix{"cheriotMQTT"};
 static std::array<char, MQTTMaximumClientLength> clientID;
-static_assert(clientIDPrefix.size() < clientID.size());
+static_assert(ClientIdPrefix.size() < clientID.size());
 
-constexpr size_t networkBufferSize    = 1024;
-constexpr size_t incomingPublishCount = 20;
-constexpr size_t outgoingPublishCount = 20;
+constexpr size_t NetworkBufferSize    = 1024;
+constexpr size_t IncomingPublishCount = 20;
+constexpr size_t OutgoingPublishCount = 20;
 
 // Topic constants
 
@@ -83,23 +83,23 @@ constexpr std::string_view TopicPing{"plantnode/ping"};
 
 // The sealed MQTT handle never leaves this compartment.
 // core_logic holds no capability to it — it cannot publish directly.
-static MQTTConnection s_handle       = nullptr;
-static volatile int   s_ack_received = 0;
+static MQTTConnection sHandle      = nullptr;
+static volatile int   sAckReceived = 0;
 
 // Single-slot buffer for the most recent decrypted remote-attestation message
 // received on plantnode/attestation. core_logic drains it via
 // comms_take_ra_message and runs the handshake state machine outside the MQTT
 // callback (avoiding re-entrant mqtt_run during a publish).
-static uint8_t       s_raBuf[256];
-static size_t        s_raLen     = 0;
-static volatile bool s_raPending = false;
+static uint8_t       sRaBuf[256];
+static size_t        sRaLen     = 0;
+static volatile bool sRaPending = false;
 
 // Callbacks
 
-void __cheri_callback publishCallback(const char *topicName,
-                                      size_t      topicNameLength,
-                                      const void *payload,
-                                      size_t      payloadLength)
+void __cheri_callback publish_callback(const char *topicName,
+                                       size_t      topicNameLength,
+                                       const void *payload,
+                                       size_t      payloadLength)
 {
 	Timeout t{MS_TO_TICKS(5000)};
 	if (heap_claim_ephemeral(&t, topicName) != 0 ||
@@ -155,24 +155,24 @@ void __cheri_callback publishCallback(const char *topicName,
 			// Most likely our own echo (wrong key direction) — ignore quietly.
 			return;
 		}
-		if (s_raPending)
+		if (sRaPending)
 		{
 			Debug::log("RA message dropped: previous one not yet drained");
 			return;
 		}
-		if (plainLen > sizeof(s_raBuf))
+		if (plainLen > sizeof(sRaBuf))
 		{
 			Debug::log("RA message too large ({} bytes)", plainLen);
 			return;
 		}
-		memcpy(s_raBuf, plainBuf, plainLen);
-		s_raLen     = plainLen;
-		s_raPending = true;
+		memcpy(sRaBuf, plainBuf, plainLen);
+		sRaLen     = plainLen;
+		sRaPending = true;
 		Debug::log("RA message buffered ({} bytes)", plainLen);
 	}
 }
 
-void __cheri_callback ackCallback(uint16_t packetID, bool isReject)
+void __cheri_callback ack_callback(uint16_t packetID, bool isReject)
 {
 	if (isReject)
 	{
@@ -182,18 +182,18 @@ void __cheri_callback ackCallback(uint16_t packetID, bool isReject)
 	{
 		Debug::log("ACK for packet {}", packetID);
 	}
-	s_ack_received++;
+	sAckReceived++;
 }
 
 // Internal helpers
 
-static int wait_for_ack(int expected_acks, uint32_t timeout_ms = 5000)
+static int wait_for_ack(int expectedAcks, uint32_t timeoutMs = 5000)
 {
-	Timeout t{MS_TO_TICKS(timeout_ms)};
-	while (s_ack_received < expected_acks)
+	Timeout t{MS_TO_TICKS(timeoutMs)};
+	while (sAckReceived < expectedAcks)
 	{
 		t       = Timeout{MS_TO_TICKS(100)};
-		int ret = mqtt_run(&t, s_handle);
+		int ret = mqtt_run(&t, sHandle);
 		if (ret < 0)
 		{
 			return ret;
@@ -202,15 +202,14 @@ static int wait_for_ack(int expected_acks, uint32_t timeout_ms = 5000)
 	return 0;
 }
 
-static int publish_and_wait(std::string_view topic,
-                            const void      *payload,
-                            size_t           payload_len)
+static int
+publish_and_wait(std::string_view topic, const void *payload, size_t payloadLen)
 {
-	int expected = s_ack_received + 1;
+	int expected = sAckReceived + 1;
 
 	Timeout t{MS_TO_TICKS(5000)};
 	int     ret = mqtt_publish(
-	  &t, s_handle, 1, topic.data(), topic.size(), payload, payload_len);
+	  &t, sHandle, 1, topic.data(), topic.size(), payload, payloadLen);
 	if (ret < 0)
 	{
 		Debug::log("mqtt_publish to '{}' failed: {}", topic, ret);
@@ -261,32 +260,32 @@ int __cheri_compartment("comms") comms_connect()
 		timeval tv;
 		if (gettimeofday(&tv, nullptr) == 0)
 		{
-			Debug::log("UNIX epoch: {}", (int32_t)tv.tv_sec);
+			Debug::log("UNIX epoch: {}", static_cast<int32_t>(tv.tv_sec));
 		}
 	}
 
-	memcpy(clientID.data(), clientIDPrefix.data(), clientIDPrefix.size());
-	mqtt_generate_client_id(clientID.data() + clientIDPrefix.size(),
-	                        clientID.size() - clientIDPrefix.size());
+	memcpy(clientID.data(), ClientIdPrefix.data(), ClientIdPrefix.size());
+	mqtt_generate_client_id(clientID.data() + ClientIdPrefix.size(),
+	                        clientID.size() - ClientIdPrefix.size());
 	Debug::log("Client ID: {}",
 	           std::string_view{clientID.data(), clientID.size()});
 
 	Debug::log("Connecting to MQTT broker...");
-	t        = UnlimitedTimeout;
-	s_handle = mqtt_connect(&t,
-	                        STATIC_SEALED_VALUE(mqttMalloc),
-	                        CONNECTION_CAPABILITY(MosquittoOrgMQTT),
-	                        publishCallback,
-	                        ackCallback,
-	                        TAs,
-	                        TAs_NUM,
-	                        networkBufferSize,
-	                        incomingPublishCount,
-	                        outgoingPublishCount,
-	                        clientID.data(),
-	                        clientID.size());
+	t       = UnlimitedTimeout;
+	sHandle = mqtt_connect(&t,
+	                       STATIC_SEALED_VALUE(mqttMalloc),
+	                       CONNECTION_CAPABILITY(MosquittoOrgMQTT),
+	                       publish_callback,
+	                       ack_callback,
+	                       TAs,
+	                       TAs_NUM,
+	                       NetworkBufferSize,
+	                       IncomingPublishCount,
+	                       OutgoingPublishCount,
+	                       clientID.data(),
+	                       clientID.size());
 
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		Debug::log("Failed to connect to MQTT broker.");
 		return -ENOTCONN;
@@ -295,26 +294,26 @@ int __cheri_compartment("comms") comms_connect()
 
 	Debug::log(
 	  "Subscribing to '{}' and '{}'...", TopicCommands, TopicAttestation);
-	s_ack_received = 0;
-	t              = UnlimitedTimeout;
-	int ret        = mqtt_subscribe(
-	  &t, s_handle, 1, TopicCommands.data(), TopicCommands.size());
+	sAckReceived = 0;
+	t            = UnlimitedTimeout;
+	int ret      = mqtt_subscribe(
+	  &t, sHandle, 1, TopicCommands.data(), TopicCommands.size());
 	if (ret < 0)
 	{
 		Debug::log("Subscribe to commands failed: {}", ret);
-		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), s_handle);
-		s_handle = nullptr;
+		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), sHandle);
+		sHandle = nullptr;
 		return ret;
 	}
 
 	t   = UnlimitedTimeout;
 	ret = mqtt_subscribe(
-	  &t, s_handle, 1, TopicAttestation.data(), TopicAttestation.size());
+	  &t, sHandle, 1, TopicAttestation.data(), TopicAttestation.size());
 	if (ret < 0)
 	{
 		Debug::log("Subscribe to attestation failed: {}", ret);
-		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), s_handle);
-		s_handle = nullptr;
+		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), sHandle);
+		sHandle = nullptr;
 		return ret;
 	}
 
@@ -322,33 +321,33 @@ int __cheri_compartment("comms") comms_connect()
 	if (ret < 0)
 	{
 		Debug::log("SUBACK wait failed: {}", ret);
-		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), s_handle);
-		s_handle = nullptr;
+		mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), sHandle);
+		sHandle = nullptr;
 		return ret;
 	}
 	Debug::log("Subscribed to '{}' and '{}'.", TopicCommands, TopicAttestation);
 
 	display_connected_network();
 
-	static const char debugMsg[] = "plantnode-online";
-	comms_publish(TopicPing.data(), debugMsg, sizeof(debugMsg) - 1);
+	static const char DebugMsg[] = "plantnode-online";
+	comms_publish(TopicPing.data(), DebugMsg, sizeof(DebugMsg) - 1);
 	Debug::log("Sent initial ping message to broker.");
 
 	return 0;
 }
 
 int __cheri_compartment("comms")
-  comms_publish(const char *topic, const void *payload, size_t payload_len)
+  comms_publish(const char *topic, const void *payload, size_t payloadLen)
 {
 	if (!topic || !payload)
 	{
 		return -EINVAL;
 	}
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		return -ENOTCONN;
 	}
-	return publish_and_wait(std::string_view{topic}, payload, payload_len);
+	return publish_and_wait(std::string_view{topic}, payload, payloadLen);
 }
 
 int __cheri_compartment("comms")
@@ -358,17 +357,17 @@ int __cheri_compartment("comms")
 	{
 		return -EINVAL;
 	}
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		return -ENOTCONN;
 	}
 	Debug::log("Publishing Noise-N key packet ({} bytes, retained)...",
 	           packetLen);
 
-	int     expected = s_ack_received + 1;
+	int     expected = sAckReceived + 1;
 	Timeout t{MS_TO_TICKS(5000)};
 	int     ret = mqtt_publish(&t,
-	                           s_handle,
+	                           sHandle,
 	                           1,
 	                           TopicKey.data(),
 	                           TopicKey.size(),
@@ -390,7 +389,7 @@ int __cheri_compartment("comms")
 	{
 		return -EINVAL;
 	}
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		return -ENOTCONN;
 	}
@@ -415,7 +414,7 @@ int __cheri_compartment("comms")
 	{
 		return -EINVAL;
 	}
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		return -ENOTCONN;
 	}
@@ -430,35 +429,35 @@ int __cheri_compartment("comms")
 	{
 		return -EINVAL;
 	}
-	if (!s_raPending)
+	if (!sRaPending)
 	{
 		return -ENOENT;
 	}
-	memcpy(out, s_raBuf, s_raLen);
-	*outLen     = s_raLen;
-	s_raPending = false;
+	memcpy(out, sRaBuf, sRaLen);
+	*outLen    = sRaLen;
+	sRaPending = false;
 	return 0;
 }
 
 int __cheri_compartment("comms") comms_poll()
 {
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		return -ENOTCONN;
 	}
 	Timeout t{MS_TO_TICKS(100)};
-	return mqtt_run(&t, s_handle);
+	return mqtt_run(&t, sHandle);
 }
 
 int __cheri_compartment("comms") comms_disconnect()
 {
-	if (!Capability{s_handle}.is_valid())
+	if (!Capability{sHandle}.is_valid())
 	{
 		return 0;
 	}
 	Debug::log("Disconnecting from MQTT broker...");
 	Timeout t{MS_TO_TICKS(5000)};
-	int ret  = mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), s_handle);
-	s_handle = nullptr;
+	int     ret = mqtt_disconnect(&t, STATIC_SEALED_VALUE(mqttMalloc), sHandle);
+	sHandle     = nullptr;
 	return ret;
 }

@@ -26,7 +26,7 @@
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("i2c_driver")
-  i2c_write(uint8_t device_addr, const uint8_t *data, size_t len);
+  i2c_write(uint8_t deviceAddr, const uint8_t *data, size_t len);
 
 /**
  * Read bytes from a device on the I2C bus.
@@ -38,7 +38,7 @@ int __cheri_compartment("i2c_driver")
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("i2c_driver")
-  i2c_read(uint8_t device_addr, uint8_t *data, size_t len);
+  i2c_read(uint8_t deviceAddr, uint8_t *data, size_t len);
 
 /**
  * Combined write-then-read (repeated-start), common for register-based
@@ -52,7 +52,7 @@ int __cheri_compartment("i2c_driver")
  *
  * Returns 0 on success, negative errno on failure.
  */
-int __cheri_compartment("i2c_driver") i2c_write_read(uint8_t        device_addr,
+int __cheri_compartment("i2c_driver") i2c_write_read(uint8_t        deviceAddr,
                                                      const uint8_t *wdata,
                                                      size_t         wlen,
                                                      uint8_t       *rdata,

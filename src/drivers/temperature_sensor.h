@@ -19,7 +19,7 @@
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("temperature_sensor")
-  temperature_read_both(int16_t *celsius_x10_out, uint16_t *humidity_rx10_out);
+  temperature_read_both(int16_t *celsiusX10Out, uint16_t *humidityRx10Out);
 
 /**
  * Read temperature only (°C × 10). Triggers a full AHT20 measurement but
@@ -28,4 +28,4 @@ int __cheri_compartment("temperature_sensor")
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("temperature_sensor")
-  temperature_read_celsius_x10(int16_t *celsius_x10_out);
+  temperature_read_celsius_x10(int16_t *celsiusX10Out);

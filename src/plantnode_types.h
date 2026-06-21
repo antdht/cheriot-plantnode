@@ -12,13 +12,13 @@
  */
 struct SensorReading
 {
-	uint16_t moisture_raw; // Seesaw 0x36: raw capacitance (dry≈200, wet≈2000)
-	int16_t  temperature_cx10; // AHT20 0x38:  °C × 10  (e.g. 235 = 23.5 °C)
-	uint16_t humidity_rx10;    // AHT20 0x38:  %RH × 10 (e.g. 455 = 45.5 %RH)
-	uint32_t timestamp;        // UNIX timestamp at time of reading
-	uint32_t last_watering; // UNIX timestamp of most recent pump activation (0
-	                        // = never)
-	bool valid;             // false if either sensor read failed
+	uint16_t moistureRaw; // Seesaw 0x36: raw capacitance (dry≈200, wet≈2000)
+	int16_t  temperatureCx10; // AHT20 0x38:  °C × 10  (e.g. 235 = 23.5 °C)
+	uint16_t humidityRx10;    // AHT20 0x38:  %RH × 10 (e.g. 455 = 45.5 %RH)
+	uint32_t timestamp;       // UNIX timestamp at time of reading
+	uint32_t lastWatering; // UNIX timestamp of most recent pump activation (0
+	                       // = never)
+	bool valid;            // false if either sensor read failed
 };
 
 /**
@@ -59,11 +59,11 @@ static constexpr size_t AttestationDigestLength = 32;
  */
 struct AttestationQuote
 {
-	uint8_t slot;          // booted software-slot index ("slot 2" == index 1)
-	uint8_t device_id_len; // bytes of device_id actually in use
-	char    device_id[DeviceIdMaxLength];           // e.g. "plantnode-001"
-	uint8_t image_hash[AttestationImageHashLength]; // hydro_hash of loaded ELF
-	uint8_t nonce[AttestationNonceLength];          // verifier freshness nonce
+	uint8_t slot;        // booted software-slot index ("slot 2" == index 1)
+	uint8_t deviceIdLen; // bytes of deviceId actually in use
+	char    deviceId[DeviceIdMaxLength];           // e.g. "plantnode-001"
+	uint8_t imageHash[AttestationImageHashLength]; // hydro_hash of loaded ELF
+	uint8_t nonce[AttestationNonceLength];         // verifier freshness nonce
 	uint8_t signature[AttestationSignatureMaxLength]; // fake_tpm signature
 };
 

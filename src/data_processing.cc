@@ -3,7 +3,6 @@
 
 #include "data_processing.h"
 #include "display/display_data.h"
-#include "drivers/moisture_sensor.h"
 #include "drivers/temperature_sensor.h"
 #include <debug.hh>
 #include <errno.h>
@@ -21,16 +20,15 @@ int __cheri_compartment("data_processing") data_read_sensors(SensorReading *out)
 	out->valid = false;
 
 	// WARN: Temporary, waiting for the moisture sensor (fake reading of 900)
-	// int ret = moisture_read_raw(&out->moisture_raw);
+	// int ret = moisture_read_raw(&out->moistureRaw);
 	// if (ret < 0)
 	// {
 	// 	Debug::log("Moisture read failed: {}", ret);
 	// 	return ret;
 	// }
-	out->moisture_raw = 900;
+	out->moistureRaw = 900;
 
-	int ret =
-	  temperature_read_both(&out->temperature_cx10, &out->humidity_rx10);
+	int ret = temperature_read_both(&out->temperatureCx10, &out->humidityRx10);
 	if (ret < 0)
 	{
 		Debug::log("Temperature/humidity read failed: {}", ret);
@@ -39,14 +37,14 @@ int __cheri_compartment("data_processing") data_read_sensors(SensorReading *out)
 
 	struct timeval tv;
 	out->timestamp =
-	  (gettimeofday(&tv, nullptr) == 0) ? (uint32_t)tv.tv_sec : 0;
+	  (gettimeofday(&tv, nullptr) == 0) ? static_cast<uint32_t>(tv.tv_sec) : 0;
 
 	out->valid = true;
 
 	Debug::log("moisture={} temp={} hum={}",
-	           out->moisture_raw,
-	           out->temperature_cx10,
-	           out->humidity_rx10);
+	           out->moistureRaw,
+	           out->temperatureCx10,
+	           out->humidityRx10);
 
 	display_sensor_readings(out);
 	return 0;

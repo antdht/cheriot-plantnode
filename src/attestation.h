@@ -23,12 +23,12 @@
  */
 
 /**
- * Write the device identity string (e.g. "plantnode-001") to id_out.
- * id_out must be at least DeviceIdMaxLength bytes.
+ * Write the device identity string (e.g. "plantnode-001") to idOut.
+ * idOut must be at least DeviceIdMaxLength bytes.
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("attestation")
-  attestation_get_device_id(char *id_out, size_t *id_len);
+  attestation_get_device_id(char *idOut, size_t *idLen);
 
 /**
  * Measure the firmware image of the booted slot: read the loaded ELF back out
@@ -63,22 +63,22 @@ static inline size_t attestation_quote_serialize(const AttestationQuote *q,
 {
 	size_t p = 0;
 	out[p++] = q->slot;
-	out[p++] = q->device_id_len;
-	for (size_t i = 0; i < q->device_id_len; i++)
+	out[p++] = q->deviceIdLen;
+	for (size_t i = 0; i < q->deviceIdLen; i++)
 	{
-		out[p++] = (uint8_t)q->device_id[i];
+		out[p++] = static_cast<uint8_t>(q->deviceId[i]);
 	}
-	for (size_t i = 0; i < AttestationImageHashLength; i++)
+	for (unsigned char i : q->imageHash)
 	{
-		out[p++] = q->image_hash[i];
+		out[p++] = i;
 	}
-	for (size_t i = 0; i < AttestationNonceLength; i++)
+	for (unsigned char i : q->nonce)
 	{
-		out[p++] = q->nonce[i];
+		out[p++] = i;
 	}
-	for (size_t i = 0; i < AttestationSignatureMaxLength; i++)
+	for (unsigned char i : q->signature)
 	{
-		out[p++] = q->signature[i];
+		out[p++] = i;
 	}
 	return p;
 }

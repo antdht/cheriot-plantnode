@@ -26,13 +26,13 @@ extern "C" uint32_t rand_32()
 	return static_cast<uint32_t>(r);
 }
 
-static const char kDeviceId[] = "plantnode-001";
+static const char KDeviceId[] = "plantnode-001";
 
 // 8-byte hydro_hash contexts (domain separation). The verifier MUST use the
 // identical contexts when recomputing the image hash and the quote digest.
-static const char kImageHashContext[hydro_hash_CONTEXTBYTES] =
+static const char KImageHashContext[hydro_hash_CONTEXTBYTES] =
   {'P', 'N', '-', 'I', 'M', 'A', 'G', 'E'};
-static const char kQuoteContext[hydro_hash_CONTEXTBYTES] =
+static const char KQuoteContext[hydro_hash_CONTEXTBYTES] =
   {'P', 'N', '-', 'Q', 'U', 'O', 'T', 'E'};
 
 // Software-slot flash layout
@@ -65,10 +65,10 @@ static constexpr uint8_t SlotSelectGpioPins[3] = {13, 14, 15};
 static uint8_t booted_slot()
 {
 	auto           gpio  = MMIO_CAPABILITY(SonataGpioBoard, gpio_board);
-	const uint32_t input = gpio->input;
+	const uint32_t Input = gpio->input;
 	for (uint8_t i = 0; i < 3; i++)
 	{
-		if (input & (1u << SlotSelectGpioPins[i]))
+		if (Input & (1u << SlotSelectGpioPins[i]))
 		{
 			return i;
 		}
@@ -136,19 +136,20 @@ flash_read(volatile FlashSpi *spi, uint32_t address, uint8_t *out, uint32_t len)
 	while (done < len)
 	{
 		uint32_t       remaining = len - done;
-		const uint16_t chunk =
-		  remaining > FlashChunkBytes ? FlashChunkBytes : (uint16_t)remaining;
-		const uint32_t a      = address + done;
-		const uint8_t  cmd[5] = {CmdReadData4Addr,
-		                         (uint8_t)((a >> 24) & 0xff),
-		                         (uint8_t)((a >> 16) & 0xff),
-		                         (uint8_t)((a >> 8) & 0xff),
-		                         (uint8_t)(a & 0xff)};
+		const uint16_t Chunk     = remaining > FlashChunkBytes
+		                             ? FlashChunkBytes
+		                             : static_cast<uint16_t>(remaining);
+		const uint32_t A         = address + done;
+		const uint8_t  Cmd[5]    = {CmdReadData4Addr,
+		                            static_cast<uint8_t>((A >> 24) & 0xff),
+		                            static_cast<uint8_t>((A >> 16) & 0xff),
+		                            static_cast<uint8_t>((A >> 8) & 0xff),
+		                            static_cast<uint8_t>(A & 0xff)};
 		flash_set_cs(spi, true);
-		spi->blocking_write(cmd, 5);
-		spi->blocking_read(out + done, chunk);
+		spi->blocking_write(Cmd, 5);
+		spi->blocking_read(out + done, Chunk);
 		flash_set_cs(spi, false);
-		done += chunk;
+		done += Chunk;
 	}
 }
 
@@ -156,20 +157,20 @@ flash_read(volatile FlashSpi *spi, uint32_t address, uint8_t *out, uint32_t len)
 // the naturally-aligned stack buffer below).
 struct Elf32Ehdr
 {
-	uint8_t  e_ident[16];
-	uint16_t e_type;
-	uint16_t e_machine;
-	uint32_t e_version;
-	uint32_t e_entry;
-	uint32_t e_phoff;
-	uint32_t e_shoff;
-	uint32_t e_flags;
-	uint16_t e_ehsize;
-	uint16_t e_phentsize;
-	uint16_t e_phnum;
-	uint16_t e_shentsize;
-	uint16_t e_shnum;
-	uint16_t e_shstrndx;
+	uint8_t  eIdent[16];
+	uint16_t eType;
+	uint16_t eMachine;
+	uint32_t eVersion;
+	uint32_t eEntry;
+	uint32_t ePhoff;
+	uint32_t eShoff;
+	uint32_t eFlags;
+	uint16_t eEhsize;
+	uint16_t ePhentsize;
+	uint16_t ePhnum;
+	uint16_t eShentsize;
+	uint16_t eShnum;
+	uint16_t eShstrndx;
 };
 
 // Read the ELF header, derive the total file length, then stream the whole
@@ -177,75 +178,76 @@ struct Elf32Ehdr
 static int measure_image(uint8_t *hashOut)
 {
 	volatile FlashSpi *spi  = flash_spi();
-	const uint8_t      slot = booted_slot();
-	const uint32_t     base = SoftwareSlotFlashOffset[slot];
+	const uint8_t      Slot = booted_slot();
+	const uint32_t     Base = SoftwareSlotFlashOffset[Slot];
 
 	flash_init_reset(spi);
 
 	Elf32Ehdr ehdr;
-	flash_read(spi, base, (uint8_t *)&ehdr, sizeof(ehdr));
+	flash_read(spi, Base, reinterpret_cast<uint8_t *>(&ehdr), sizeof(ehdr));
 
-	if (ehdr.e_ident[0] != 0x7f || ehdr.e_ident[1] != 'E' ||
-	    ehdr.e_ident[2] != 'L' || ehdr.e_ident[3] != 'F')
+	if (ehdr.eIdent[0] != 0x7f || ehdr.eIdent[1] != 'E' ||
+	    ehdr.eIdent[2] != 'L' || ehdr.eIdent[3] != 'F')
 	{
 		Debug::log("measure_image: no ELF magic at slot offset {} "
 		           "(first bytes {} {} {} {})",
-		           base,
-		           ehdr.e_ident[0],
-		           ehdr.e_ident[1],
-		           ehdr.e_ident[2],
-		           ehdr.e_ident[3]);
+		           Base,
+		           ehdr.eIdent[0],
+		           ehdr.eIdent[1],
+		           ehdr.eIdent[2],
+		           ehdr.eIdent[3]);
 		return -EIO;
 	}
 
 	// Whole-file hash: section headers sit at the end of the file, so the
-	// total length is e_shoff + e_shnum * e_shentsize.
-	const uint32_t total =
-	  ehdr.e_shoff + (uint32_t)ehdr.e_shnum * (uint32_t)ehdr.e_shentsize;
-	if (total < sizeof(Elf32Ehdr) || total > MaxImageBytes)
+	// total length is eShoff + eShnum * eShentsize.
+	const uint32_t Total =
+	  ehdr.eShoff + static_cast<uint32_t>(ehdr.eShnum) *
+	                  static_cast<uint32_t>(ehdr.eShentsize);
+	if (Total < sizeof(Elf32Ehdr) || Total > MaxImageBytes)
 	{
-		Debug::log("measure_image: implausible image length {}", total);
+		Debug::log("measure_image: implausible image length {}", Total);
 		return -EIO;
 	}
 
 	// Diagnostics: which slot/offset, the image length, and the entry point.
 	// (Debug::log prints integers in hex with a 0x prefix; no format spec.)
-	Debug::log("measure_image: slot {} base {} total {} e_entry {}",
-	           slot,
-	           base,
-	           total,
-	           ehdr.e_entry);
+	Debug::log("measure_image: slot {} base {} total {} eEntry {}",
+	           Slot,
+	           Base,
+	           Total,
+	           ehdr.eEntry);
 
 	hydro_hash_state state;
-	hydro_hash_init(&state, kImageHashContext, nullptr);
+	hydro_hash_init(&state, KImageHashContext, nullptr);
 
 	uint8_t  buf[FlashChunkBytes];
 	uint32_t off = 0;
-	while (off < total)
+	while (off < Total)
 	{
-		const uint32_t remaining = total - off;
-		const uint32_t chunk =
-		  remaining > FlashChunkBytes ? FlashChunkBytes : remaining;
-		flash_read(spi, base + off, buf, chunk);
-		hydro_hash_update(&state, buf, chunk);
-		off += chunk;
+		const uint32_t Remaining = Total - off;
+		const uint32_t Chunk =
+		  Remaining > FlashChunkBytes ? FlashChunkBytes : Remaining;
+		flash_read(spi, Base + off, buf, Chunk);
+		hydro_hash_update(&state, buf, Chunk);
+		off += Chunk;
 	}
 
 	hydro_hash_final(&state, hashOut, AttestationImageHashLength);
-	Debug::log("measure_image: hashed {} bytes of slot {}", total, slot);
+	Debug::log("measure_image: hashed {} bytes of slot {}", Total, Slot);
 	return 0;
 }
 
 int __cheri_compartment("attestation")
-  attestation_get_device_id(char *id_out, size_t *id_len)
+  attestation_get_device_id(char *idOut, size_t *idLen)
 {
-	if (!id_out || !id_len)
+	if (!idOut || !idLen)
 	{
 		return -EINVAL;
 	}
-	size_t len = sizeof(kDeviceId) - 1;
-	memcpy(id_out, kDeviceId, len);
-	*id_len = len;
+	size_t len = sizeof(KDeviceId) - 1;
+	memcpy(idOut, KDeviceId, len);
+	*idLen = len;
 	return 0;
 }
 
@@ -305,32 +307,32 @@ int __cheri_compartment("attestation")
 	memset(quoteOut, 0, sizeof(*quoteOut));
 	quoteOut->slot = booted_slot();
 
-	const size_t idLen = sizeof(kDeviceId) - 1;
-	memcpy(quoteOut->device_id, kDeviceId, idLen);
-	quoteOut->device_id_len = (uint8_t)idLen;
+	const size_t IdLen = sizeof(KDeviceId) - 1;
+	memcpy(quoteOut->deviceId, KDeviceId, IdLen);
+	quoteOut->deviceIdLen = static_cast<uint8_t>(IdLen);
 
-	int ret = measure_image(quoteOut->image_hash);
+	int ret = measure_image(quoteOut->imageHash);
 	if (ret != 0)
 	{
 		return ret;
 	}
 	memcpy(quoteOut->nonce, nonce, nonceLen);
 
-	// Build the signed message: device_id | slot | image_hash | nonce, then
+	// Build the signed message: deviceId | slot | imageHash | nonce, then
 	// hash it to a 32-byte digest. The verifier reconstructs this identically.
 	uint8_t msg[DeviceIdMaxLength + 1 + AttestationImageHashLength +
 	            AttestationNonceLength];
 	size_t  p = 0;
-	memcpy(msg + p, quoteOut->device_id, idLen);
-	p += idLen;
+	memcpy(msg + p, quoteOut->deviceId, IdLen);
+	p += IdLen;
 	msg[p++] = quoteOut->slot;
-	memcpy(msg + p, quoteOut->image_hash, AttestationImageHashLength);
+	memcpy(msg + p, quoteOut->imageHash, AttestationImageHashLength);
 	p += AttestationImageHashLength;
 	memcpy(msg + p, quoteOut->nonce, nonceLen);
 	p += nonceLen;
 
 	uint8_t digest[AttestationDigestLength];
-	hydro_hash_hash(digest, sizeof(digest), msg, p, kQuoteContext, nullptr);
+	hydro_hash_hash(digest, sizeof(digest), msg, p, KQuoteContext, nullptr);
 
 	size_t sigLen = 0;
 	ret = fake_tpm_sign(digest, sizeof(digest), quoteOut->signature, &sigLen);

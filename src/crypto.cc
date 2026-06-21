@@ -22,27 +22,27 @@ extern "C" uint32_t rand_32()
 
 // Verifier's static Noise-N public key (compiled in).
 // Generated once: cydrogen.KxPair.gen(); verifier holds the sk.
-static const uint8_t kVerifierPublicKey[hydro_kx_PUBLICKEYBYTES] = {
+static const uint8_t KVerifierPublicKey[hydro_kx_PUBLICKEYBYTES] = {
   0x8d, 0xae, 0x2d, 0x4d, 0xdc, 0x9b, 0xe6, 0x5b, 0x4e, 0x89, 0xaf,
   0x65, 0x9c, 0xbc, 0xc1, 0xff, 0x4e, 0xd1, 0xe9, 0xb7, 0x90, 0xd7,
   0x7e, 0xd0, 0xd9, 0x9b, 0x80, 0x20, 0xa9, 0x67, 0x2a, 0x16};
 
 // Context strings (must be exactly 8 bytes).
 // kBoxCtx matches cydrogen's SecretBox default (8 space bytes 0x20).
-static const char kBoxCtx[hydro_secretbox_CONTEXTBYTES] =
+static const char KBoxCtx[hydro_secretbox_CONTEXTBYTES] =
   {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
 
 // Context for combining the verifier and device nonces. Mirrors
 // AttestationCombineContext ("PN-COMB1"); kept here too so the hydro_hash call
 // has an 8-byte char buffer of the exact value the verifier uses.
-static const char kCombineCtx[hydro_hash_CONTEXTBYTES] =
+static const char KCombineCtx[hydro_hash_CONTEXTBYTES] =
   {'P', 'N', '-', 'C', 'O', 'M', 'B', '1'};
 
 // Per-boot session keys (both directions).
-static uint8_t  s_sessionTxKey[hydro_kx_SESSIONKEYBYTES];
-static uint8_t  s_sessionRxKey[hydro_kx_SESSIONKEYBYTES];
-static bool     s_sessionReady = false;
-static uint64_t s_msgId        = 0;
+static uint8_t  sSessionTxKey[hydro_kx_SESSIONKEYBYTES];
+static uint8_t  sSessionRxKey[hydro_kx_SESSIONKEYBYTES];
+static bool     sSessionReady = false;
+static uint64_t sMsgId        = 0;
 
 static void ensure_init()
 {
@@ -63,26 +63,26 @@ static int encrypt_plain(const uint8_t *plain,
                          uint8_t       *out,
                          size_t        *outLen)
 {
-	if (!s_sessionReady)
+	if (!sSessionReady)
 	{
 		Debug::log("encrypt_plain: session not ready");
 		return -ENOSYS;
 	}
 
-	uint64_t msgId = s_msgId;
+	uint64_t msgId = sMsgId;
 	for (int i = 0; i < 8; i++)
 	{
-		out[i] = (uint8_t)(msgId >> (8 * i));
+		out[i] = static_cast<uint8_t>(msgId >> (8 * i));
 	}
 
 	if (hydro_secretbox_encrypt(
-	      out + 8, plain, plainLen, msgId, kBoxCtx, s_sessionTxKey) != 0)
+	      out + 8, plain, plainLen, msgId, KBoxCtx, sSessionTxKey) != 0)
 	{
 		Debug::log("encrypt_plain: secretbox encrypt failed");
 		return -EIO;
 	}
 
-	s_msgId++;
+	sMsgId++;
 	*outLen = 8 + hydro_secretbox_HEADERBYTES + plainLen;
 	return 0;
 }
@@ -100,16 +100,16 @@ int __cheri_compartment("crypto")
 	hydro_kx_session_keypair sessionKp;
 	uint8_t                  packet1[hydro_kx_N_PACKET1BYTES];
 
-	if (hydro_kx_n_1(&sessionKp, packet1, nullptr, kVerifierPublicKey) != 0)
+	if (hydro_kx_n_1(&sessionKp, packet1, nullptr, KVerifierPublicKey) != 0)
 	{
 		Debug::log("Noise-N kx step 1 failed");
 		return -EIO;
 	}
 
-	memcpy(s_sessionTxKey, sessionKp.tx, hydro_kx_SESSIONKEYBYTES);
-	memcpy(s_sessionRxKey, sessionKp.rx, hydro_kx_SESSIONKEYBYTES);
-	s_sessionReady = true;
-	s_msgId        = 0;
+	memcpy(sSessionTxKey, sessionKp.tx, hydro_kx_SESSIONKEYBYTES);
+	memcpy(sSessionRxKey, sessionKp.rx, hydro_kx_SESSIONKEYBYTES);
+	sSessionReady = true;
+	sMsgId        = 0;
 
 	memcpy(packetOut, packet1, hydro_kx_N_PACKET1BYTES);
 	*packetLen = hydro_kx_N_PACKET1BYTES;
@@ -126,7 +126,7 @@ int __cheri_compartment("crypto")
 		return -EINVAL;
 	}
 	ensure_init();
-	if (!s_sessionReady)
+	if (!sSessionReady)
 	{
 		Debug::log("crypto_encrypt: session not ready");
 		return -ENOSYS;
@@ -138,20 +138,24 @@ int __cheri_compartment("crypto")
 	char   plain[128];
 	size_t pos = 0;
 
-	auto write_char = [&](char c) -> bool {
+	auto writeChar = [&](char c) -> bool {
 		if (pos >= sizeof(plain))
+		{
 			return false;
+		}
 		plain[pos++] = c;
 		return true;
 	};
 	auto write_literal = [&](const char *s, size_t n) -> bool {
 		if (pos + n > sizeof(plain))
+		{
 			return false;
+		}
 		memcpy(plain + pos, s, n);
 		pos += n;
 		return true;
 	};
-	auto write_uint = [&](uint32_t v) -> bool {
+	auto writeUint = [&](uint32_t v) -> bool {
 		char tmp[11];
 		int  len = 0;
 		if (v == 0)
@@ -172,28 +176,32 @@ int __cheri_compartment("crypto")
 				tmp[j] = t;
 			}
 		}
-		if (pos + (size_t)len > sizeof(plain))
+		if (pos + static_cast<size_t>(len) > sizeof(plain))
+		{
 			return false;
+		}
 		memcpy(plain + pos, tmp, len);
 		pos += len;
 		return true;
 	};
-	auto write_int = [&](int32_t v) -> bool {
+	auto writeInt = [&](int32_t v) -> bool {
 		if (v < 0)
 		{
-			if (!write_char('-'))
+			if (!writeChar('-'))
+			{
 				return false;
+			}
 			v = -v;
 		}
-		return write_uint((uint32_t)v);
+		return writeUint(static_cast<uint32_t>(v));
 	};
 
 #define WL(s) write_literal(s, sizeof(s) - 1)
-	bool ok = WL("{\"timestamp\":") && write_uint(reading->timestamp) &&
-	          WL(",\"humidity\":") && write_uint(reading->humidity_rx10) &&
-	          WL(",\"temperature\":") && write_int(reading->temperature_cx10) &&
-	          WL(",\"moisture\":") && write_uint(reading->moisture_raw) &&
-	          WL(",\"lastWatering\":") && write_uint(reading->last_watering) &&
+	bool ok = WL("{\"timestamp\":") && writeUint(reading->timestamp) &&
+	          WL(",\"humidity\":") && writeUint(reading->humidityRx10) &&
+	          WL(",\"temperature\":") && writeInt(reading->temperatureCx10) &&
+	          WL(",\"moisture\":") && writeUint(reading->moistureRaw) &&
+	          WL(",\"lastWatering\":") && writeUint(reading->lastWatering) &&
 	          WL("}");
 #undef WL
 
@@ -204,7 +212,8 @@ int __cheri_compartment("crypto")
 	}
 	size_t plainLen = pos;
 
-	int ret = encrypt_plain((const uint8_t *)plain, plainLen, outBuf, outLen);
+	int ret = encrypt_plain(
+	  reinterpret_cast<const uint8_t *>(plain), plainLen, outBuf, outLen);
 	if (ret != 0)
 	{
 		return ret;
@@ -253,7 +262,7 @@ int __cheri_compartment("crypto") crypto_combine_nonce(const uint8_t *nonceV,
 	memcpy(buf + AttestationNonceLength, nonceD, AttestationNonceLength);
 
 	hydro_hash_hash(
-	  out, AttestationNonceLength, buf, sizeof(buf), kCombineCtx, nullptr);
+	  out, AttestationNonceLength, buf, sizeof(buf), KCombineCtx, nullptr);
 	return 0;
 }
 
@@ -267,7 +276,7 @@ int __cheri_compartment("crypto") crypto_decrypt(const uint8_t *inBuf,
 		return -EINVAL;
 	}
 	ensure_init();
-	if (!s_sessionReady)
+	if (!sSessionReady)
 	{
 		Debug::log("crypto_decrypt: session not ready");
 		return -ENOSYS;
@@ -285,14 +294,14 @@ int __cheri_compartment("crypto") crypto_decrypt(const uint8_t *inBuf,
 	uint64_t msgId = 0;
 	for (int i = 0; i < 8; i++)
 	{
-		msgId |= ((uint64_t)inBuf[i]) << (8 * i);
+		msgId |= (static_cast<uint64_t>(inBuf[i])) << (8 * i);
 	}
 
 	size_t cipherLen    = inLen - 8;
 	size_t decryptedLen = cipherLen - hydro_secretbox_HEADERBYTES;
 
 	if (hydro_secretbox_decrypt(
-	      plainOut, inBuf + 8, cipherLen, msgId, kBoxCtx, s_sessionRxKey) != 0)
+	      plainOut, inBuf + 8, cipherLen, msgId, KBoxCtx, sSessionRxKey) != 0)
 	{
 		// No log here: on the shared plantnode/attestation topic the device
 		// receives its own published replies back (encrypted under the TX key),

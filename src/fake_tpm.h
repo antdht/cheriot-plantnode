@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "plantnode_types.h"
 #include <compartment.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -27,7 +27,7 @@ int __cheri_compartment("comms") comms_connect();
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("comms")
-  comms_publish(const char *topic, const void *payload, size_t payload_len);
+  comms_publish(const char *topic, const void *payload, size_t payloadLen);
 
 /**
  * Publish the 48-byte Noise-N packet1 to the key topic

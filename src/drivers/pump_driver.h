@@ -33,4 +33,4 @@ int __cheri_compartment("pump_driver") pump_off();
  *
  * Returns 0 on success, negative errno on failure.
  */
-int __cheri_compartment("pump_driver") pump_get_state(bool *state_out);
+int __cheri_compartment("pump_driver") pump_get_state(bool *stateOut);

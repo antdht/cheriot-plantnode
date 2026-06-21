@@ -22,24 +22,24 @@
 
 using Debug = ConditionalDebug<true, "PlantNode Moisture">;
 
-static constexpr uint8_t kAddr            = 0x36;
-static constexpr uint8_t kSeesawTouchBase = 0x0F;
-static constexpr uint8_t kSeesawTouchCh0  = 0x10;
+static constexpr uint8_t KAddr            = 0x36;
+static constexpr uint8_t KSeesawTouchBase = 0x0F;
+static constexpr uint8_t KSeesawTouchCh0  = 0x10;
 
-// Calibration end-points — adjust after measuring your sensor in dry/wet soil.
-static constexpr uint16_t kCalDry = 400;
-static constexpr uint16_t kCalWet = 1800;
+// Calibration end-points, adjust after measuring your sensor in dry/wet soil.
+static constexpr uint16_t KCalDry = 400;
+static constexpr uint16_t KCalWet = 1800;
 
-int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *raw_out)
+int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *rawOut)
 {
-	if (!raw_out)
+	if (!rawOut)
 	{
 		return -EINVAL;
 	}
 
 	// Select the touch ADC channel
-	uint8_t cmd[2] = {kSeesawTouchBase, kSeesawTouchCh0};
-	int     ret    = i2c_write(kAddr, cmd, sizeof(cmd));
+	uint8_t cmd[2] = {KSeesawTouchBase, KSeesawTouchCh0};
+	int     ret    = i2c_write(KAddr, cmd, sizeof(cmd));
 	if (ret < 0)
 	{
 		Debug::log("Failed to write Seesaw touch register: {}", ret);
@@ -51,21 +51,21 @@ int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *raw_out)
 
 	// Read 2-byte big-endian result
 	uint8_t buf[2] = {};
-	ret            = i2c_read(kAddr, buf, sizeof(buf));
+	ret            = i2c_read(KAddr, buf, sizeof(buf));
 	if (ret < 0)
 	{
 		Debug::log("Failed to read Seesaw touch value: {}", ret);
 		return ret;
 	}
 
-	*raw_out = static_cast<uint16_t>((buf[0] << 8) | buf[1]);
+	*rawOut = static_cast<uint16_t>((buf[0] << 8) | buf[1]);
 	return 0;
 }
 
 int __cheri_compartment("moisture_sensor")
-  moisture_read_percent(uint8_t *percent_out)
+  moisture_read_percent(uint8_t *percentOut)
 {
-	if (!percent_out)
+	if (!percentOut)
 	{
 		return -EINVAL;
 	}
@@ -77,18 +77,18 @@ int __cheri_compartment("moisture_sensor")
 		return ret;
 	}
 
-	if (raw <= kCalDry)
+	if (raw <= KCalDry)
 	{
-		*percent_out = 0;
+		*percentOut = 0;
 	}
-	else if (raw >= kCalWet)
+	else if (raw >= KCalWet)
 	{
-		*percent_out = 100;
+		*percentOut = 100;
 	}
 	else
 	{
-		*percent_out = static_cast<uint8_t>(
-		  (static_cast<uint32_t>(raw - kCalDry) * 100u) / (kCalWet - kCalDry));
+		*percentOut = static_cast<uint8_t>(
+		  (static_cast<uint32_t>(raw - KCalDry) * 100u) / (KCalWet - KCalDry));
 	}
 	return 0;
 }

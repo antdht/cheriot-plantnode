@@ -19,7 +19,7 @@
  *
  * Returns 0 on success, negative errno on failure.
  */
-int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *raw_out);
+int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *rawOut);
 
 /**
  * Read the moisture level as a percentage (0–100).
@@ -30,4 +30,4 @@ int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *raw_out);
  * Returns 0 on success, negative errno on failure.
  */
 int __cheri_compartment("moisture_sensor")
-  moisture_read_percent(uint8_t *percent_out);
+  moisture_read_percent(uint8_t *percentOut);
