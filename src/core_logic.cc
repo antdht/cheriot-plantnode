@@ -33,7 +33,8 @@ namespace
 	RaState s_raState = RaState::Idle;
 	uint8_t s_nonceV[AttestationNonceLength]; // verifier nonce from challenge 1
 	uint8_t s_nonceD[AttestationNonceLength]; // our own nonce sent in the reply
-	uint8_t s_lastCombined[AttestationNonceLength]; // combined nonce of last quote
+	uint8_t
+	  s_lastCombined[AttestationNonceLength]; // combined nonce of last quote
 
 	// Latched once the verifier approves a quote. The board withholds all
 	// telemetry until this is set, so no sensor data leaves the device until it
@@ -185,12 +186,15 @@ namespace
 				}
 				if (payloadLen != AttestationNonceLength)
 				{
-					Debug::log("RA approval: bad payload length {}", payloadLen);
+					Debug::log("RA approval: bad payload length {}",
+					           payloadLen);
 					return;
 				}
-				if (memcmp(payload, s_lastCombined, AttestationNonceLength) != 0)
+				if (memcmp(payload, s_lastCombined, AttestationNonceLength) !=
+				    0)
 				{
-					Debug::log("RA approval: combined nonce mismatch — ignored");
+					Debug::log(
+					  "RA approval: combined nonce mismatch — ignored");
 					return;
 				}
 				s_attested = true;

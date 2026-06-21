@@ -29,14 +29,14 @@ class Plotter:
     """
 
     def __init__(
-            self,
-            master: tk.Misc,
-            queue: Queue[PlotterQueue],
-            interval: int = 1000,
-            x_label: str = "Time",
-            y_label: str = "Value",
-            title: Optional[str] = None,
-            max_points: Optional[int] = None,
+        self,
+        master: tk.Misc,
+        queue: Queue[PlotterQueue],
+        interval: int = 1000,
+        x_label: str = "Time",
+        y_label: str = "Value",
+        title: Optional[str] = None,
+        max_points: Optional[int] = None,
     ) -> None:
         self.queue: Queue[PlotterQueue] = queue
         self.max_points = max_points
@@ -64,7 +64,9 @@ class Plotter:
         self.canvas = FigureCanvasTkAgg(self.fig, master)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
-        self.ani = FuncAnimation(self.fig, self._update, interval=interval, cache_frame_data=False)
+        self.ani = FuncAnimation(
+            self.fig, self._update, interval=interval, cache_frame_data=False
+        )
         self.cursor = None
 
     def _on_hover(self, sel) -> None:
@@ -92,7 +94,7 @@ class Plotter:
             else:
                 # Deterministic hue from a hash of the sender string
                 h = int(hashlib.md5(sender_id.encode()).hexdigest(), 16)
-                hue = (h * ((1 + 5 ** 0.5) / 2)) % 1.0
+                hue = (h * ((1 + 5**0.5) / 2)) % 1.0
 
             rgb = colorsys.hsv_to_rgb(hue, 0.85, 0.80)
             self.sender_colors[sender_id] = (
@@ -111,8 +113,8 @@ class Plotter:
         if self.max_points is not None:
             d = self.sender_data[sender_id]
             if len(d["x"]) > self.max_points:
-                d["x"] = d["x"][-self.max_points:]
-                d["y"] = d["y"][-self.max_points:]
+                d["x"] = d["x"][-self.max_points :]
+                d["y"] = d["y"][-self.max_points :]
 
     def _update(self, frame: int) -> list[plt.Line2D]:
         while not self.queue.empty():
@@ -138,8 +140,13 @@ class Plotter:
                     line.set_color(color)
                 else:
                     (line,) = self.ax.plot(
-                        xs, data["y"], lw=1.5, marker="o", markersize=3,
-                        color=color, label=f"Sender {sender_id}",
+                        xs,
+                        data["y"],
+                        lw=1.5,
+                        marker="o",
+                        markersize=3,
+                        color=color,
+                        label=f"Sender {sender_id}",
                     )
                     self.sender_lines[sender_id] = line
 

@@ -17,9 +17,9 @@
  * boundary, so even a fully compromised application compartment cannot extract
  * it.
  *
- * Trust boundary: a cheriot-audit policy asserts that fake_tpm_sign is imported
- * ONLY by the attestation compartment, so no other compartment can reach the
- * signing oracle at all.
+ * Trust boundary: a cheriot-audit policy asserts that fake_tpm_sign() is
+ * imported ONLY by the attestation compartment, so no other compartment can
+ * reach the signing oracle at all.
  */
 
 /**

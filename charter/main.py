@@ -63,9 +63,7 @@ def _attestation_topic(state: AppState) -> str:
     return f"{state.config.mqtt.topic_prefix}/attestation"
 
 
-def send_ra_message(
-    state: AppState, session: SensorSession, payload: bytes
-) -> None:
+def send_ra_message(state: AppState, session: SensorSession, payload: bytes) -> None:
     """Encrypt an RA handshake message under the session TX key and publish it to
     plantnode/attestation (the device decrypts with its RX key)."""
     if state.mqtt_client is None:
@@ -139,9 +137,7 @@ def handle_attestation_message(
             print(f"    - {reason}")
         if ok:
             # Approve the device: it withholds telemetry until it sees this.
-            send_ra_message(
-                state, session, bytes([RA_APPROVED]) + session.ra_combined
-            )
+            send_ra_message(state, session, bytes([RA_APPROVED]) + session.ra_combined)
             print(f"[attestation] {session.device_id}: approval sent")
         else:
             print(
@@ -192,9 +188,7 @@ def on_message(
                 return
 
             rx_key, tx_key = recover_session_keys(state.verifier_kp, payload_bytes)
-            session = SensorSession(
-                device_id=device_id, rx_key=rx_key, tx_key=tx_key
-            )
+            session = SensorSession(device_id=device_id, rx_key=rx_key, tx_key=tx_key)
             state.sessions[device_id] = session
             print(
                 f"Session established with {device_id} "

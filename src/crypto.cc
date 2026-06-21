@@ -55,8 +55,9 @@ static void ensure_init()
 }
 
 // Prepend the 8-byte little-endian msg_id and secretbox-encrypt `plain` under
-// the session TX key. `out` must hold 8 + hydro_secretbox_HEADERBYTES + plainLen
-// bytes. Shared by crypto_encrypt (telemetry) and crypto_encrypt_bytes (RA).
+// the session TX key. `out` must hold 8 + hydro_secretbox_HEADERBYTES +
+// plainLen bytes. Shared by crypto_encrypt (telemetry) and crypto_encrypt_bytes
+// (RA).
 static int encrypt_plain(const uint8_t *plain,
                          size_t         plainLen,
                          uint8_t       *out,
@@ -74,8 +75,8 @@ static int encrypt_plain(const uint8_t *plain,
 		out[i] = (uint8_t)(msgId >> (8 * i));
 	}
 
-	if (hydro_secretbox_encrypt(out + 8, plain, plainLen, msgId, kBoxCtx,
-	                            s_sessionTxKey) != 0)
+	if (hydro_secretbox_encrypt(
+	      out + 8, plain, plainLen, msgId, kBoxCtx, s_sessionTxKey) != 0)
 	{
 		Debug::log("encrypt_plain: secretbox encrypt failed");
 		return -EIO;
@@ -251,8 +252,8 @@ int __cheri_compartment("crypto") crypto_combine_nonce(const uint8_t *nonceV,
 	memcpy(buf, nonceV, AttestationNonceLength);
 	memcpy(buf + AttestationNonceLength, nonceD, AttestationNonceLength);
 
-	hydro_hash_hash(out, AttestationNonceLength, buf, sizeof(buf), kCombineCtx,
-	                nullptr);
+	hydro_hash_hash(
+	  out, AttestationNonceLength, buf, sizeof(buf), kCombineCtx, nullptr);
 	return 0;
 }
 

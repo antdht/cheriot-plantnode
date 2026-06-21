@@ -63,9 +63,15 @@ def _load_libhydrogen() -> ctypes.CDLL:
     ):
         subprocess.run(
             [
-                "cc", "-O2", "-fPIC", "-shared",
-                "-I", str(_LIBHYDROGEN_SRC),
-                str(src), "-o", str(_LIBHYDROGEN_SO),
+                "cc",
+                "-O2",
+                "-fPIC",
+                "-shared",
+                "-I",
+                str(_LIBHYDROGEN_SRC),
+                str(src),
+                "-o",
+                str(_LIBHYDROGEN_SO),
             ],
             check=True,
         )
@@ -73,10 +79,12 @@ def _load_libhydrogen() -> ctypes.CDLL:
     lib.hydro_init.restype = ctypes.c_int
     lib.hydro_hash_hash.restype = ctypes.c_int
     lib.hydro_hash_hash.argtypes = [
-        ctypes.c_char_p, ctypes.c_size_t,  # out, out_len
-        ctypes.c_char_p, ctypes.c_size_t,  # in, in_len
-        ctypes.c_char_p,                   # ctx[8]
-        ctypes.c_char_p,                   # key[32] or NULL
+        ctypes.c_char_p,
+        ctypes.c_size_t,  # out, out_len
+        ctypes.c_char_p,
+        ctypes.c_size_t,  # in, in_len
+        ctypes.c_char_p,  # ctx[8]
+        ctypes.c_char_p,  # key[32] or NULL
     ]
     # Ed25519-style signing (hydro_sign), to derive the device key and verify
     # quotes exactly as fake_tpm.cc produces them.
@@ -87,10 +95,11 @@ def _load_libhydrogen() -> ctypes.CDLL:
     ]
     lib.hydro_sign_verify.restype = ctypes.c_int
     lib.hydro_sign_verify.argtypes = [
-        ctypes.c_char_p,                   # csig[64]
-        ctypes.c_char_p, ctypes.c_size_t,  # m, m_len
-        ctypes.c_char_p,                   # ctx[8]
-        ctypes.c_char_p,                   # pk[32]
+        ctypes.c_char_p,  # csig[64]
+        ctypes.c_char_p,
+        ctypes.c_size_t,  # m, m_len
+        ctypes.c_char_p,  # ctx[8]
+        ctypes.c_char_p,  # pk[32]
     ]
     lib.hydro_init()
     return lib
@@ -134,9 +143,7 @@ def device_signing_pubkey() -> bytes:
     seed compiled into fake_tpm.cc, via hydro_sign_keygen_deterministic."""
     global _DEVICE_PUBKEY
     if _DEVICE_PUBKEY is None:
-        keypair = ctypes.create_string_buffer(
-            PUBLIC_KEY_LENGTH + SECRET_KEY_LENGTH
-        )
+        keypair = ctypes.create_string_buffer(PUBLIC_KEY_LENGTH + SECRET_KEY_LENGTH)
         _LIB.hydro_sign_keygen_deterministic(keypair, FAKE_TPM_SEED)
         _DEVICE_PUBKEY = keypair.raw[:PUBLIC_KEY_LENGTH]
     return _DEVICE_PUBKEY
@@ -159,18 +166,16 @@ def deserialize_quote(buf: bytes) -> dict:
     slot = buf[0]
     dev_id_len = buf[1]
     off = 2
-    device_id = buf[off:off + dev_id_len]
+    device_id = buf[off : off + dev_id_len]
     off += dev_id_len
-    image_hash = buf[off:off + IMAGE_HASH_LENGTH]
+    image_hash = buf[off : off + IMAGE_HASH_LENGTH]
     off += IMAGE_HASH_LENGTH
-    nonce = buf[off:off + NONCE_LENGTH]
+    nonce = buf[off : off + NONCE_LENGTH]
     off += NONCE_LENGTH
-    signature = buf[off:off + SIGNATURE_LENGTH]
+    signature = buf[off : off + SIGNATURE_LENGTH]
     off += SIGNATURE_LENGTH
     if off != len(buf):
-        raise ValueError(
-            f"quote length mismatch (parsed {off}, got {len(buf)} bytes)"
-        )
+        raise ValueError(f"quote length mismatch (parsed {off}, got {len(buf)} bytes)")
     if len(image_hash) != IMAGE_HASH_LENGTH or len(nonce) != NONCE_LENGTH:
         raise ValueError("quote truncated")
     if len(signature) != SIGNATURE_LENGTH:
@@ -211,17 +216,16 @@ def verify_quote(
     reasons.append("signature OK" if sig_ok else "signature INVALID")
 
     nonce_ok = quote["nonce"] == expected_combined
-    reasons.append(
-        "combined nonce OK" if nonce_ok else "combined nonce MISMATCH"
-    )
+    reasons.append("combined nonce OK" if nonce_ok else "combined nonce MISMATCH")
 
     try:
         expected_img = expected_image_hash(elf_path)
         image_ok = quote["image_hash"] == expected_img
         reasons.append(
-            "image hash OK" if image_ok
+            "image hash OK"
+            if image_ok
             else f"image hash MISMATCH (got {quote['image_hash'].hex()}, "
-                 f"expected {expected_img.hex()})"
+            f"expected {expected_img.hex()})"
         )
     except Exception as e:
         image_ok = False
@@ -265,9 +269,7 @@ def expected_image_hash(elf_path: str = DEFAULT_FIRMWARE_ELF) -> bytes:
     return hydro_hash(elf[:total], IMAGE_HASH_CONTEXT, IMAGE_HASH_LENGTH)
 
 
-def verify_image_hash(
-    received: bytes, elf_path: str = DEFAULT_FIRMWARE_ELF
-) -> bool:
+def verify_image_hash(received: bytes, elf_path: str = DEFAULT_FIRMWARE_ELF) -> bool:
     """
     Check a raw attestation payload (the 32 bytes published on
     plantnode/attestation) against the expected hash of elf_path.

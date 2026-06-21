@@ -85,20 +85,23 @@ static constexpr size_t AttestationQuoteWireMaxLength =
 // Verifier -> device:
 static constexpr uint8_t RaChallenge1 = 0x01; // payload: nonce_V[32]
 static constexpr uint8_t RaChallenge2 = 0x02; // payload: combined[32]
-static constexpr uint8_t RaApproved   = 0x03; // payload: combined[32] (verdict OK)
+static constexpr uint8_t RaApproved =
+  0x03; // payload: combined[32] (verdict OK)
 // Device -> verifier:
-static constexpr uint8_t RaNonceReply = 0x01; // payload: nonce_V[32] ‖ nonce_D[32]
-static constexpr uint8_t RaQuote      = 0x02; // payload: serialised AttestationQuote
+static constexpr uint8_t RaNonceReply =
+  0x01;                                  // payload: nonce_V[32] ‖ nonce_D[32]
+static constexpr uint8_t RaQuote = 0x02; // payload: serialised AttestationQuote
 
 /**
  * 8-byte hydro_hash context used to combine the verifier and device nonces into
  * the single nonce the quote is bound to. Must match the verifier exactly.
  *   combined = hydro_hash(ctx="PN-COMB1", nonce_V ‖ nonce_D, 32)
  */
-static constexpr char AttestationCombineContext[8] = {
-  'P', 'N', '-', 'C', 'O', 'M', 'B', '1'};
+static constexpr char AttestationCombineContext[8] =
+  {'P', 'N', '-', 'C', 'O', 'M', 'B', '1'};
 
 /**
  * Largest RA handshake plaintext: 1-byte type tag + a fully serialised quote.
  */
-static constexpr size_t RaPlaintextMaxLength = 1 + AttestationQuoteWireMaxLength;
+static constexpr size_t RaPlaintextMaxLength =
+  1 + AttestationQuoteWireMaxLength;

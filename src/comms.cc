@@ -293,8 +293,8 @@ int __cheri_compartment("comms") comms_connect()
 	}
 	Debug::log("Connected to MQTT broker!");
 
-	Debug::log("Subscribing to '{}' and '{}'...", TopicCommands,
-	           TopicAttestation);
+	Debug::log(
+	  "Subscribing to '{}' and '{}'...", TopicCommands, TopicAttestation);
 	s_ack_received = 0;
 	t              = UnlimitedTimeout;
 	int ret        = mqtt_subscribe(
