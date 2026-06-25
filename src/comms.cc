@@ -140,19 +140,17 @@ void __cheri_callback publish_callback(const char *topicName,
 	}
 	else if (topic == TopicAttestation)
 	{
-		// All remote-attestation handshake traffic shares this topic, both
-		// directions. We also receive our own published replies back, but those
-		// are encrypted under the device TX key and so fail to decrypt with the
-		// RX key — those echoes are dropped quietly below.
-		uint8_t plainBuf[256];
-		size_t  plainLen = 0;
-		int     ret      = crypto_decrypt(static_cast<const uint8_t *>(payload),
-		                                  payloadLength,
-		                                  plainBuf,
-		                                  &plainLen);
-		if (ret != 0)
+		// MOCK attestation API: this topic now carries plaintext JSON, both
+		// directions. The device publishes a {"query":"am_i_attested",...}
+		// request and the verifier replies {"attested":true,...}. Because the
+		// topic is shared, we also receive our own request echoed back — drop
+		// it by its "query" marker (note: the request body also contains the
+		// substring "attested", inside "am_i_attested", so we must key off
+		// "query", not "attested", to tell the two apart).
+		std::string_view msg{static_cast<const char *>(payload), payloadLength};
+		if (msg.find("\"query\"") != std::string_view::npos)
 		{
-			// Most likely our own echo (wrong key direction) — ignore quietly.
+			// Our own echoed request — ignore quietly.
 			return;
 		}
 		if (sRaPending)
@@ -160,15 +158,15 @@ void __cheri_callback publish_callback(const char *topicName,
 			Debug::log("RA message dropped: previous one not yet drained");
 			return;
 		}
-		if (plainLen > sizeof(sRaBuf))
+		if (payloadLength > sizeof(sRaBuf))
 		{
-			Debug::log("RA message too large ({} bytes)", plainLen);
+			Debug::log("RA message too large ({} bytes)", payloadLength);
 			return;
 		}
-		memcpy(sRaBuf, plainBuf, plainLen);
-		sRaLen     = plainLen;
+		memcpy(sRaBuf, payload, payloadLength);
+		sRaLen     = payloadLength;
 		sRaPending = true;
-		Debug::log("RA message buffered ({} bytes)", plainLen);
+		Debug::log("RA response buffered ({} bytes)", payloadLength);
 	}
 }
 

@@ -1,5 +1,4 @@
 import datetime
-import secrets
 import tkinter
 from dataclasses import dataclass, field
 from queue import Queue
@@ -9,23 +8,11 @@ import paho.mqtt.client as mqtt
 from paho.mqtt import client as mqtt_lib
 
 from config import AppConfig
-from attestation import (
-    RA_CHALLENGE1,
-    RA_CHALLENGE2,
-    RA_NONCE_REPLY,
-    RA_QUOTE,
-    RA_APPROVED,
-    NONCE_LENGTH,
-    combine_nonce,
-    deserialize_quote,
-    verify_quote,
-)
+from attestation import build_response, parse_request
 from encryption import (
     load_verifier_keypair,
     recover_session_keys,
     decrypt_telemetry,
-    decrypt_message,
-    encrypt_command,
 )
 from logger import CsvLogger
 from plotter import Plotter, PlotterQueue
@@ -63,92 +50,28 @@ def _attestation_topic(state: AppState) -> str:
     return f"{state.config.mqtt.topic_prefix}/attestation"
 
 
-def send_ra_message(state: AppState, session: SensorSession, payload: bytes) -> None:
-    """Encrypt an RA handshake message under the session TX key and publish it to
-    plantnode/attestation (the device decrypts with its RX key)."""
-    if state.mqtt_client is None:
+def handle_attestation_message(state: AppState, raw: bytes) -> None:
+    """MOCK attestation API: reply "yes" to a device "am i attested?" query.
+
+    Plaintext JSON now — no decryption. The device's own request is echoed back
+    on the shared topic; parse_request returns None for anything that is not an
+    am_i_attested query (including our own response), so those are ignored.
+    """
+    request = parse_request(raw)
+    if request is None:
         return
-    wire = encrypt_command(session.tx_key, session.tx_msg_id, payload)
-    session.tx_msg_id += 1
-    state.mqtt_client.publish(_attestation_topic(state), wire, qos=1)
 
-
-def initiate_attestation(state: AppState, session: SensorSession) -> None:
-    """Start a dual-nonce handshake: pick a fresh verifier nonce and send
-    challenge 1."""
-    nonce_v = secrets.token_bytes(NONCE_LENGTH)
-    session.ra_nonce_v = nonce_v
-    session.ra_combined = None
-    send_ra_message(state, session, bytes([RA_CHALLENGE1]) + nonce_v)
+    device = request.get("device", "unknown")
+    token = str(request.get("token", ""))
     print(
-        f"[attestation] {session.device_id}: sent challenge 1 "
-        f"(nonce_V={nonce_v.hex()[:16]}...)"
+        f"[attestation] '{device}' asks 'am i attested?' "
+        f"(token={token[:16]}…) → yes"
     )
 
-
-def handle_attestation_message(
-    state: AppState, session: SensorSession, raw: bytes
-) -> None:
-    """Process a message on plantnode/attestation. The verifier's own echoed
-    challenges (encrypted under the TX key) fail to decrypt and are skipped."""
-    try:
-        plain = decrypt_message(session.rx_key, raw)
-    except (cydrogen.DecryptException, ValueError):
-        # Our own challenge echoed back (wrong key direction) — ignore.
-        return
-
-    if len(plain) < 1:
-        return
-    msg_type = plain[0]
-    payload = plain[1:]
-
-    if msg_type == RA_NONCE_REPLY:
-        if len(payload) != 2 * NONCE_LENGTH:
-            print(f"[attestation] bad nonce reply length ({len(payload)})")
-            return
-        echoed_v = payload[:NONCE_LENGTH]
-        nonce_d = payload[NONCE_LENGTH:]
-        if session.ra_nonce_v is None or echoed_v != session.ra_nonce_v:
-            print("[attestation] nonce reply does not echo our nonce_V — ignoring")
-            return
-        combined = combine_nonce(session.ra_nonce_v, nonce_d)
-        session.ra_combined = combined
-        send_ra_message(state, session, bytes([RA_CHALLENGE2]) + combined)
-        print(
-            f"[attestation] {session.device_id}: got nonce reply "
-            f"(nonce_D={nonce_d.hex()[:16]}...), sent challenge 2 "
-            f"(combined={combined.hex()[:16]}...)"
+    if state.mqtt_client is not None:
+        state.mqtt_client.publish(
+            _attestation_topic(state), build_response(request), qos=1
         )
-
-    elif msg_type == RA_QUOTE:
-        if session.ra_combined is None:
-            print("[attestation] quote received with no pending handshake — ignoring")
-            return
-        try:
-            quote = deserialize_quote(payload)
-        except ValueError as e:
-            print(f"[attestation] malformed quote: {e}")
-            return
-        ok, reasons = verify_quote(quote, session.ra_combined)
-        device_id = quote["device_id"].decode("ascii", errors="replace")
-        verdict = "OK" if ok else "FAILED"
-        print(f"[attestation] quote from '{device_id}' slot {quote['slot']}: {verdict}")
-        for reason in reasons:
-            print(f"    - {reason}")
-        if ok:
-            # Approve the device: it withholds telemetry until it sees this.
-            send_ra_message(state, session, bytes([RA_APPROVED]) + session.ra_combined)
-            print(f"[attestation] {session.device_id}: approval sent")
-        else:
-            print(
-                f"[attestation] {session.device_id}: quote rejected — "
-                f"no approval sent, device telemetry stays withheld"
-            )
-        session.ra_nonce_v = None
-        session.ra_combined = None
-
-    else:
-        print(f"[attestation] unknown message type {msg_type}")
 
 
 def on_connect(
@@ -195,8 +118,6 @@ def on_message(
                 f"(rx_key={rx_key.hex()[:16]}... "
                 f"tx_key={tx_key.hex()[:16]}...)"
             )
-            # Kick off a remote-attestation handshake now that we can talk to it.
-            initiate_attestation(state, session)
 
         # ── Encrypted telemetry: plantnode/telemetry ──────────────────────
         elif topic == f"{prefix}/telemetry":
@@ -236,13 +157,11 @@ def on_message(
             state.logger.log(device_id, reading)
             enqueue_for_plots(device_id, reading, state)
 
-        # ── Remote-attestation handshake: plantnode/attestation ───────────
+        # ── Mock attestation API: plantnode/attestation ───────────────────
         elif topic == f"{prefix}/attestation":
-            if not state.sessions:
-                # No session yet — can't decrypt; skip (also covers our own echo).
-                return
-            device_id, session = next(iter(state.sessions.items()))
-            handle_attestation_message(state, session, bytes(payload_bytes))
+            # Plaintext JSON now; no session/decryption needed. The device's own
+            # echoed request is filtered out inside the handler.
+            handle_attestation_message(state, bytes(payload_bytes))
 
     except cydrogen.DecryptException as e:
         print(f"Decryption failed on topic {topic}: {e}")

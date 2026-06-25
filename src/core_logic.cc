@@ -11,6 +11,7 @@
 #include <debug.hh>
 #include <fail-simulator-on-error.h>
 #include <string.h>
+#include <string_view>
 #include <thread.h>
 #include <tick_macros.h>
 
@@ -19,202 +20,134 @@ using Debug = ConditionalDebug<true, "PlantNode">;
 namespace
 {
 
-	// Remote-attestation handshake state. The verifier drives a dual-nonce
-	// challenge-response over plantnode/attestation; this device side runs:
-	//   Idle --RaChallenge1--> AwaitingCombined --RaChallenge2--> (quote) -->
-	//   Idle
-	enum class RaState
-	{
-		Idle,
-		AwaitingCombined,
-		AwaitingApproval,
-	};
+	// MOCK attestation API.
+	//
+	// The real dual-nonce, signed remote-attestation handshake has been
+	// replaced by a simple plaintext request/response on plantnode/attestation:
+	// the device asks "am i attested?" and the verifier (charter) replies
+	// "yes". The cross-compartment call chain is kept intact and mocked end to
+	// end:
+	//   core_logic -> attestation (mock measure) -> tpm (mock sign) ->
+	//   core_logic
+	//   -> comms (publishes the JSON query).
+	// Telemetry stays gated: no sensor data leaves the device until the
+	// verifier confirms attestation.
 
-	RaState sRaState = RaState::Idle;
-	uint8_t sNonceV[AttestationNonceLength]; // verifier nonce from challenge 1
-	uint8_t sNonceD[AttestationNonceLength]; // our own nonce sent in the reply
-	uint8_t
-	  sLastCombined[AttestationNonceLength]; // combined nonce of last quote
-
-	// Latched once the verifier approves a quote. The board withholds all
-	// telemetry until this is set, so no sensor data leaves the device until it
-	// has proven what firmware it is running and the verifier has accepted it.
+	// Latched once the verifier confirms attestation. The board withholds all
+	// telemetry until this is set.
 	bool sAttested = false;
 
-	// RA scratch buffers kept off the (small, TLS-shared) core_logic stack.
-	// Safe as statics: only the single core_logic thread touches them, and the
-	// handshake is strictly sequential (one message handled at a time).
-	uint8_t sRaPlain[RaPlaintextMaxLength];  // plaintext [type][payload]
-	uint8_t sRaEnc[CryptoRaEncryptedMaxLen]; // secretbox-encrypted message
-	uint8_t sRaWire[AttestationQuoteWireMaxLength]; // serialised quote
-	uint8_t sRaDrain[256];     // most recent message drained from comms
-	AttestationQuote sRaQuote; // quote being built
+	// Scratch buffers kept off the (small, TLS-shared) core_logic stack. Safe
+	// as statics: only the single core_logic thread touches them.
+	AttestationEvidence sEvidence;    // mock evidence gathered for each query
+	uint8_t             sReqBuf[256]; // JSON "am_i_attested" request to publish
+	uint8_t sRespBuf[256];            // most recent response drained from comms
 
-	// Handle one decrypted RA message (plaintext = [type][payload]). Runs in
-	// the core_logic loop, never inside the MQTT callback, so publishing a
-	// reply does not re-enter mqtt_run.
-	void handle_ra_message(const uint8_t *plain, size_t len)
+	bool append_literal(uint8_t    *buf,
+	                    size_t     &pos,
+	                    size_t      cap,
+	                    const char *s,
+	                    size_t      n)
 	{
-		if (len < 1)
+		if (pos + n > cap)
 		{
-			return;
+			return false;
 		}
-		uint8_t        type       = plain[0];
-		const uint8_t *payload    = plain + 1;
-		size_t         payloadLen = len - 1;
-
-		switch (type)
-		{
-			case RaChallenge1:
-			{
-				if (payloadLen != AttestationNonceLength)
-				{
-					Debug::log("RA challenge1: bad payload length {}",
-					           payloadLen);
-					return;
-				}
-				memcpy(sNonceV, payload, AttestationNonceLength);
-				if (crypto_gen_nonce(sNonceD, AttestationNonceLength) != 0)
-				{
-					Debug::log("RA challenge1: nonce generation failed");
-					return;
-				}
-
-				// Reply: [RaNonceReply][nonce_V][nonce_D]
-				size_t msgLen      = 0;
-				sRaPlain[msgLen++] = RaNonceReply;
-				memcpy(sRaPlain + msgLen, sNonceV, AttestationNonceLength);
-				msgLen += AttestationNonceLength;
-				memcpy(sRaPlain + msgLen, sNonceD, AttestationNonceLength);
-				msgLen += AttestationNonceLength;
-
-				size_t encLen = 0;
-				if (crypto_encrypt_bytes(sRaPlain, msgLen, sRaEnc, &encLen) !=
-				    0)
-				{
-					Debug::log("RA challenge1: encrypt reply failed");
-					return;
-				}
-				if (comms_publish_attestation(sRaEnc, encLen) != 0)
-				{
-					Debug::log("RA challenge1: publish reply failed");
-					return;
-				}
-				sRaState = RaState::AwaitingCombined;
-				Debug::log("RA: nonce reply sent, awaiting combined nonce");
-				break;
-			}
-
-			case RaChallenge2:
-			{
-				if (sRaState != RaState::AwaitingCombined)
-				{
-					Debug::log(
-					  "RA challenge2: unexpected (no pending challenge1)");
-					return;
-				}
-				if (payloadLen != AttestationNonceLength)
-				{
-					Debug::log("RA challenge2: bad payload length {}",
-					           payloadLen);
-					sRaState = RaState::Idle;
-					return;
-				}
-
-				uint8_t expected[AttestationNonceLength];
-				if (crypto_combine_nonce(sNonceV, sNonceD, expected) != 0)
-				{
-					Debug::log("RA challenge2: combine failed");
-					sRaState = RaState::Idle;
-					return;
-				}
-				if (memcmp(expected, payload, AttestationNonceLength) != 0)
-				{
-					Debug::log("RA challenge2: combined nonce mismatch");
-					sRaState = RaState::Idle;
-					return;
-				}
-
-				// Freshness proven on both sides — measure, build and sign a
-				// quote bound to the combined nonce.
-				if (attestation_quote(
-				      expected, AttestationNonceLength, &sRaQuote) != 0)
-				{
-					Debug::log("RA challenge2: attestation_quote failed");
-					sRaState = RaState::Idle;
-					return;
-				}
-
-				size_t wireLen =
-				  attestation_quote_serialize(&sRaQuote, sRaWire);
-
-				size_t msgLen      = 0;
-				sRaPlain[msgLen++] = RaQuote;
-				memcpy(sRaPlain + msgLen, sRaWire, wireLen);
-				msgLen += wireLen;
-
-				size_t encLen = 0;
-				if (crypto_encrypt_bytes(sRaPlain, msgLen, sRaEnc, &encLen) !=
-				    0)
-				{
-					Debug::log("RA challenge2: encrypt quote failed");
-					sRaState = RaState::Idle;
-					return;
-				}
-				if (comms_publish_attestation(sRaEnc, encLen) != 0)
-				{
-					Debug::log("RA challenge2: publish quote failed");
-					sRaState = RaState::Idle;
-					break;
-				}
-				Debug::log("RA: signed quote published ({} bytes), awaiting "
-				           "approval",
-				           encLen);
-				// Remember which combined nonce this quote was bound to so the
-				// approval can be matched to it, and wait for the verdict.
-				memcpy(sLastCombined, expected, AttestationNonceLength);
-				sRaState = RaState::AwaitingApproval;
-				break;
-			}
-
-			case RaApproved:
-			{
-				if (sRaState != RaState::AwaitingApproval)
-				{
-					Debug::log("RA approval: unexpected (no quote awaiting)");
-					return;
-				}
-				if (payloadLen != AttestationNonceLength)
-				{
-					Debug::log("RA approval: bad payload length {}",
-					           payloadLen);
-					return;
-				}
-				if (memcmp(payload, sLastCombined, AttestationNonceLength) != 0)
-				{
-					Debug::log(
-					  "RA approval: combined nonce mismatch — ignored");
-					return;
-				}
-				sAttested = true;
-				sRaState  = RaState::Idle;
-				Debug::log("RA: attestation approved — telemetry enabled");
-				break;
-			}
-
-			default:
-				Debug::log("RA: unknown message type {}", type);
-				break;
-		}
+		memcpy(buf + pos, s, n);
+		pos += n;
+		return true;
 	}
 
-	// Drain and handle every RA message buffered by the comms compartment.
+	bool append_hex(uint8_t       *buf,
+	                size_t        &pos,
+	                size_t         cap,
+	                const uint8_t *data,
+	                size_t         n)
+	{
+		static const char Hex[] = "0123456789abcdef";
+		if (pos + 2 * n > cap)
+		{
+			return false;
+		}
+		for (size_t i = 0; i < n; i++)
+		{
+			buf[pos++] = static_cast<uint8_t>(Hex[data[i] >> 4]);
+			buf[pos++] = static_cast<uint8_t>(Hex[data[i] & 0x0f]);
+		}
+		return true;
+	}
+
+	// Build the plaintext JSON query:
+	//   {"query":"am_i_attested","device":"plantnode-001","token":"<64 hex>"}
+	// Returns the number of bytes written, or 0 on overflow.
+	size_t build_attestation_query(uint8_t                   *buf,
+	                               size_t                     cap,
+	                               const AttestationEvidence *e)
+	{
+		size_t pos = 0;
+#define AL(s) append_literal(buf, pos, cap, s, sizeof(s) - 1)
+		bool ok = AL("{\"query\":\"am_i_attested\",\"device\":\"") &&
+		          append_literal(buf, pos, cap, e->deviceId, e->deviceIdLen) &&
+		          AL("\",\"token\":\"") &&
+		          append_hex(buf, pos, cap, e->token, AttestationTokenLength) &&
+		          AL("\"}");
+#undef AL
+		return ok ? pos : 0;
+	}
+
+	// Gather mock evidence and publish the "am i attested?" query.
+	void send_attestation_query()
+	{
+		if (attestation_get_evidence(&sEvidence) != 0)
+		{
+			Debug::log("MOCK attestation: attestation_get_evidence failed");
+			return;
+		}
+		size_t n =
+		  build_attestation_query(sReqBuf, sizeof(sReqBuf), &sEvidence);
+		if (n == 0)
+		{
+			Debug::log("MOCK attestation: query JSON overflow");
+			return;
+		}
+		if (comms_publish_attestation(sReqBuf, n) != 0)
+		{
+			Debug::log("MOCK attestation: query publish failed");
+			return;
+		}
+		Debug::log("MOCK attestation: sent 'am i attested?' query ({} bytes)",
+		           n);
+	}
+
+	// True if the verifier's JSON response confirms attestation.
+	bool response_is_attested(const uint8_t *buf, size_t len)
+	{
+		std::string_view sv{reinterpret_cast<const char *>(buf), len};
+		return sv.find("\"attested\":true") != std::string_view::npos ||
+		       sv.find("\"attested\": true") != std::string_view::npos;
+	}
+
+	// Drain and handle every attestation response buffered by comms.
 	void drain_ra_messages()
 	{
 		size_t len = 0;
-		while (comms_take_ra_message(sRaDrain, &len) == 0)
+		while (comms_take_ra_message(sRespBuf, &len) == 0)
 		{
-			handle_ra_message(sRaDrain, len);
+			if (response_is_attested(sRespBuf, len))
+			{
+				if (!sAttested)
+				{
+					Debug::log(
+					  "MOCK attestation: verifier says YES — telemetry "
+					  "enabled");
+				}
+				sAttested = true;
+			}
+			else
+			{
+				Debug::log(
+				  "MOCK attestation: response did not confirm attestation");
+			}
 		}
 	}
 
@@ -251,19 +184,18 @@ void __cheri_compartment("core_logic") core_entry()
 		}
 	}
 
-	// Remote attestation is now verifier-initiated: the verifier drives a
-	// dual-nonce challenge-response over plantnode/attestation (handled by
-	// drain_ra_messages below). The authentic-execution path is unchanged:
-	// core_logic (no capabilities) -> attestation (sole SPI-flash holder;
-	// measures the booted slot) -> fake_tpm (sole key holder; signs) ->
-	// core_logic -> comms (sole MQTT holder; publishes).
-
 	// Timestamp of the most recent pump activation; surfaced in every
 	// telemetry payload via the reading's lastWatering field. 0 = never.
 	uint32_t lastWatering = 0;
 
 	while (true)
 	{
+		// Keep asking until the verifier confirms attestation.
+		if (!sAttested)
+		{
+			send_attestation_query();
+		}
+
 		SensorReading reading{};
 
 		data_read_sensors(&reading);
@@ -286,8 +218,8 @@ void __cheri_compartment("core_logic") core_entry()
 		}
 
 		// Publish telemetry (comms encrypts via crypto compartment), but only
-		// once remote attestation has completed and the verifier has approved
-		// the quote. No sensor data leaves the device before then.
+		// once the verifier has confirmed attestation. No sensor data leaves
+		// the device before then.
 		if (sAttested)
 		{
 			reading.lastWatering = lastWatering;
@@ -299,12 +231,12 @@ void __cheri_compartment("core_logic") core_entry()
 		}
 		else
 		{
-			Debug::log("Telemetry withheld: awaiting attestation approval");
+			Debug::log("Telemetry withheld: awaiting attestation confirmation");
 		}
 
 		// Wait ~10 s until the next telemetry tick, but poll the network often
-		// and drain attestation messages so the multi-round handshake completes
-		// in seconds rather than one leg per telemetry tick.
+		// and drain attestation responses so a reply is picked up within a poll
+		// interval rather than one per telemetry tick.
 		constexpr int PollIntervalMs = 250;
 		constexpr int PollsPerCycle  = 10000 / PollIntervalMs;
 		for (int i = 0; i < PollsPerCycle; i++)
