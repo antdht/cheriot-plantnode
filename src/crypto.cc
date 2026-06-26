@@ -32,12 +32,6 @@ static const uint8_t KVerifierPublicKey[hydro_kx_PUBLICKEYBYTES] = {
 static const char KBoxCtx[hydro_secretbox_CONTEXTBYTES] =
   {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
 
-// Context for combining the verifier and device nonces. Mirrors
-// AttestationCombineContext ("PN-COMB1"); kept here too so the hydro_hash call
-// has an 8-byte char buffer of the exact value the verifier uses.
-static const char KCombineCtx[hydro_hash_CONTEXTBYTES] =
-  {'P', 'N', '-', 'C', 'O', 'M', 'B', '1'};
-
 // Per-boot session keys (both directions).
 static uint8_t  sSessionTxKey[hydro_kx_SESSIONKEYBYTES];
 static uint8_t  sSessionRxKey[hydro_kx_SESSIONKEYBYTES];
@@ -56,8 +50,7 @@ static void ensure_init()
 
 // Prepend the 8-byte little-endian msg_id and secretbox-encrypt `plain` under
 // the session TX key. `out` must hold 8 + hydro_secretbox_HEADERBYTES +
-// plainLen bytes. Shared by crypto_encrypt (telemetry) and crypto_encrypt_bytes
-// (RA).
+// plainLen bytes.
 static int encrypt_plain(const uint8_t *plain,
                          size_t         plainLen,
                          uint8_t       *out,
@@ -220,49 +213,6 @@ int __cheri_compartment("crypto")
 	}
 
 	Debug::log("Encrypted telemetry: {} bytes", *outLen);
-	return 0;
-}
-
-int __cheri_compartment("crypto") crypto_encrypt_bytes(const uint8_t *in,
-                                                       size_t         inLen,
-                                                       uint8_t       *out,
-                                                       size_t        *outLen)
-{
-	if (!in || !out || !outLen)
-	{
-		return -EINVAL;
-	}
-	ensure_init();
-	return encrypt_plain(in, inLen, out, outLen);
-}
-
-int __cheri_compartment("crypto") crypto_gen_nonce(uint8_t *out, size_t len)
-{
-	if (!out)
-	{
-		return -EINVAL;
-	}
-	ensure_init();
-	hydro_random_buf(out, len);
-	return 0;
-}
-
-int __cheri_compartment("crypto") crypto_combine_nonce(const uint8_t *nonceV,
-                                                       const uint8_t *nonceD,
-                                                       uint8_t       *out)
-{
-	if (!nonceV || !nonceD || !out)
-	{
-		return -EINVAL;
-	}
-	ensure_init();
-
-	uint8_t buf[AttestationNonceLength * 2];
-	memcpy(buf, nonceV, AttestationNonceLength);
-	memcpy(buf + AttestationNonceLength, nonceD, AttestationNonceLength);
-
-	hydro_hash_hash(
-	  out, AttestationNonceLength, buf, sizeof(buf), KCombineCtx, nullptr);
 	return 0;
 }
 

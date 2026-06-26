@@ -43,23 +43,19 @@ add_files("src/policy_engine.cc")
 add_includedirs("src")
 add_deps("freestanding", "debug")
 
--- attestation: measures the firmware image (reads spi2 flash, hydro_hash) and
--- builds quotes. Holds the SPI-flash capability and is the only caller of
--- fake_tpm_sign. Compiles its own copy of libhydrogen for hashing.
+-- attestation: MOCK measurer. Returns a canned firmware measurement and builds
+-- a mock quote, calling tpm to "sign" it. No longer reads flash or hashes, so
+-- it needs no SPI capability and no libhydrogen.
 compartment("attestation")
 add_files("src/attestation.cc")
-add_files("../cheriot-demos/third_party/crypto/libhydrogen/hydrogen.c")
-add_includedirs("src", "../cheriot-demos/third_party/crypto/libhydrogen")
-add_defines("CHERIOT_NO_AMBIENT_MALLOC")
+add_includedirs("src")
 add_deps("freestanding", "debug")
 
--- fake_tpm: pure signing oracle. Holds the device signing key and nothing
--- else; compiles its own copy of libhydrogen for hydro_sign.
-compartment("fake_tpm")
-add_files("src/fake_tpm.cc")
-add_files("../cheriot-demos/third_party/crypto/libhydrogen/hydrogen.c")
-add_includedirs("src", "../cheriot-demos/third_party/crypto/libhydrogen")
-add_defines("CHERIOT_NO_AMBIENT_MALLOC")
+-- tpm: MOCK signing oracle (NOT a real TPM). Returns canned bytes; no real key,
+-- no libhydrogen.
+compartment("tpm")
+add_files("src/tpm.cc")
+add_includedirs("src")
 add_deps("freestanding", "debug")
 
 compartment("crypto")
@@ -96,7 +92,7 @@ add_deps("freestanding", "debug")
 firmware("plantnode")
 add_deps("freestanding", "debug")
 -- Application
-add_deps("core_logic", "comms", "data_processing", "policy_engine", "attestation", "fake_tpm", "crypto", "display")
+add_deps("core_logic", "comms", "data_processing", "policy_engine", "attestation", "tpm", "crypto", "display")
 -- Drivers
 add_deps("i2c_driver", "moisture_sensor", "temperature_sensor", "pump_driver")
 -- Network stack
