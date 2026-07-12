@@ -6,10 +6,10 @@
 #include <compartment.h>
 
 /**
- * Main entry point for the plant node.
+ * Telemetry thread entry point for the plant node.
  *
- * Owns the primary application thread. Orchestrates the sense → evaluate →
- * attest → publish loop by calling into the other compartments. Holds no
- * hardware capabilities itself.
+ * Owns the telemetry application thread (priority 1). Reads the latest
+ * SensorReading from the control_loop mailbox and publishes it via comms.
+ * Holds no hardware capabilities itself.
  */
-void __cheri_compartment("core_logic") core_entry();
+void __cheri_compartment("core_logic") telemetry_entry();

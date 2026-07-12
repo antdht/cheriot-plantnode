@@ -16,15 +16,28 @@
 
 #include "moisture_sensor.h"
 #include "i2c_driver.h"
+#include <compartment-macros.h>
 #include <debug.hh>
 #include <errno.h>
-#include <thread.h>
+#include <timeout.h>
 
 using Debug = ConditionalDebug<true, "PlantNode Moisture">;
 
-static constexpr uint8_t KAddr            = 0x36;
 static constexpr uint8_t KSeesawTouchBase = 0x0F;
 static constexpr uint8_t KSeesawTouchCh0  = 0x10;
+
+// Capability granting THIS compartment access to the Seesaw soil sensor (0x36),
+// read+write, no lease. maxTransferLen 8 covers all its transfers.
+DECLARE_AND_DEFINE_STATIC_SEALED_VALUE(struct I2CDeviceCap,
+                                       i2c_driver,
+                                       I2CDeviceKey,
+                                       moistureI2cCap,
+                                       /* address        */ 0x36,
+                                       /* opsMask         */ I2C_OP_READ |
+                                         I2C_OP_WRITE,
+                                       /* flags           */ 0,
+                                       /* maxTransferLen  */ 8,
+                                       /* maxLeaseMs      */ 0);
 
 // Calibration end-points, adjust after measuring your sensor in dry/wet soil.
 static constexpr uint16_t KCalDry = 400;
@@ -36,28 +49,20 @@ int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *rawOut)
 	{
 		return -EINVAL;
 	}
-
-	// Select the touch ADC channel
-	uint8_t cmd[2] = {KSeesawTouchBase, KSeesawTouchCh0};
-	int     ret    = i2c_write(KAddr, cmd, sizeof(cmd));
+	uint8_t cmd[2]   = {KSeesawTouchBase, KSeesawTouchCh0};
+	uint8_t buf[2]   = {};
+	I2CStep steps[3] = {
+	  {I2cWrite, sizeof(cmd), 0, cmd},
+	  {I2cDelay, 0, 2, nullptr}, // Seesaw needs >=1 ms; ask for 2
+	  {I2cRead, sizeof(buf), 0, buf},
+	};
+	Timeout t{UnlimitedTimeout};
+	int ret = i2c_transact(STATIC_SEALED_VALUE(moistureI2cCap), steps, 3, &t);
 	if (ret < 0)
 	{
-		Debug::log("Failed to write Seesaw touch register: {}", ret);
+		Debug::log("Seesaw transact failed: {}", ret);
 		return ret;
 	}
-
-	// Seesaw needs >=1 ms to complete the capacitance measurement
-	thread_millisecond_wait(2);
-
-	// Read 2-byte big-endian result
-	uint8_t buf[2] = {};
-	ret            = i2c_read(KAddr, buf, sizeof(buf));
-	if (ret < 0)
-	{
-		Debug::log("Failed to read Seesaw touch value: {}", ret);
-		return ret;
-	}
-
 	*rawOut = static_cast<uint16_t>((buf[0] << 8) | buf[1]);
 	return 0;
 }
