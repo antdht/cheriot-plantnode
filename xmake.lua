@@ -65,12 +65,17 @@ add_includedirs("src", "../cheriot-demos/third_party/crypto/libhydrogen")
 add_defines("CHERIOT_NO_AMBIENT_MALLOC")
 add_deps("freestanding", "debug")
 
+compartment("control_loop")
+add_files("src/control_loop.cc")
+add_includedirs("src")
+add_deps("freestanding", "debug", "locks", "time_helpers")
+
 -- Driver compartments
 
 compartment("i2c_driver")
 add_files("src/drivers/i2c_driver.cc")
 add_includedirs("src")
-add_deps("freestanding", "debug")
+add_deps("freestanding", "debug", "locks")
 
 compartment("moisture_sensor")
 add_files("src/drivers/moisture_sensor.cc")
@@ -92,7 +97,7 @@ add_deps("freestanding", "debug")
 firmware("plantnode")
 add_deps("freestanding", "debug")
 -- Application
-add_deps("core_logic", "comms", "data_processing", "policy_engine", "attestation", "tpm", "crypto", "display")
+add_deps("core_logic", "comms", "data_processing", "policy_engine", "attestation", "tpm", "crypto", "display", "control_loop")
 -- Drivers
 add_deps("i2c_driver", "moisture_sensor", "temperature_sensor", "pump_driver")
 -- Network stack
@@ -121,11 +126,18 @@ on_load(function(target)
 	target:values_set("board", "sonata-1.1")
 	target:values_set("threads", {
 		{
-			-- Main application thread. Stack must cover the full
+			compartment = "control_loop",
+			priority = 3,
+			entry_point = "control_entry",
+			stack_size = 4096,
+			trusted_stack_frames = 6,
+		},
+		{
+			-- Telemetry thread. Stack must cover the full
 			-- cross-compartment call chain incl. TLS in comms.
 			compartment = "core_logic",
 			priority = 1,
-			entry_point = "core_entry",
+			entry_point = "telemetry_entry",
 			stack_size = 8160,
 			trusted_stack_frames = 8,
 		},

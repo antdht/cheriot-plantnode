@@ -4,10 +4,9 @@
 #include "core_logic.h"
 #include "attestation.h"
 #include "comms.h"
+#include "control_loop.h"
 #include "crypto.h"
-#include "data_processing.h"
 #include "plantnode_types.h"
-#include "policy_engine.h"
 #include <debug.hh>
 #include <fail-simulator-on-error.h>
 #include <string.h>
@@ -137,9 +136,8 @@ namespace
 			{
 				if (!sAttested)
 				{
-					Debug::log(
-					  "MOCK attestation: verifier says YES — telemetry "
-					  "enabled");
+					Debug::log("MOCK attestation: verifier says YES, telemetry "
+					           "enabled");
 				}
 				sAttested = true;
 			}
@@ -153,7 +151,7 @@ namespace
 
 } // namespace
 
-void __cheri_compartment("core_logic") core_entry()
+void __cheri_compartment("core_logic") telemetry_entry()
 {
 	Debug::log("=== PlantNode core starting ===");
 
@@ -184,10 +182,6 @@ void __cheri_compartment("core_logic") core_entry()
 		}
 	}
 
-	// Timestamp of the most recent pump activation; surfaced in every
-	// telemetry payload via the reading's lastWatering field. 0 = never.
-	uint32_t lastWatering = 0;
-
 	while (true)
 	{
 		// Keep asking until the verifier confirms attestation.
@@ -196,37 +190,24 @@ void __cheri_compartment("core_logic") core_entry()
 			send_attestation_query();
 		}
 
-		SensorReading reading{};
-
-		data_read_sensors(&reading);
-
-		PolicyOutcome out = policy_evaluate(&reading);
-
-		switch (out)
-		{
-			case PolicyOutcome::NoAction:
-				break;
-			case PolicyOutcome::TempAlert:
-				break;
-			case PolicyOutcome::PumpActivation:
-				// Record the watering; reported in the telemetry payload below.
-				lastWatering = reading.timestamp;
-				break;
-			default:
-				Debug::log("outcome not recognized: {}", out);
-				break;
-		}
-
 		// Publish telemetry (comms encrypts via crypto compartment), but only
 		// once the verifier has confirmed attestation. No sensor data leaves
-		// the device before then.
+		// the device before then. Read latest reading from control_loop
+		// mailbox.
 		if (sAttested)
 		{
-			reading.lastWatering = lastWatering;
-			int ret              = comms_publish_telemetry(&reading);
-			if (ret != 0)
+			SensorReading reading{};
+			if (control_get_latest_reading(&reading) == 0)
 			{
-				Debug::log("comms_publish_telemetry failed: {}", ret);
+				int ret = comms_publish_telemetry(&reading);
+				if (ret != 0)
+				{
+					Debug::log("comms_publish_telemetry failed: {}", ret);
+				}
+			}
+			else
+			{
+				Debug::log("No reading yet; skipping telemetry tick");
 			}
 		}
 		else

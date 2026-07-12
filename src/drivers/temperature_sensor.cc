@@ -19,13 +19,25 @@
 
 #include "temperature_sensor.h"
 #include "i2c_driver.h"
+#include <compartment-macros.h>
 #include <debug.hh>
 #include <errno.h>
 #include <thread.h>
+#include <timeout.h>
 
 using Debug = ConditionalDebug<true, "PlantNode Temp">;
 
-static constexpr uint8_t KAddr = 0x38;
+// Capability for the AHT20 (0x38), read+write, no lease. maxTransferLen 8.
+DECLARE_AND_DEFINE_STATIC_SEALED_VALUE(struct I2CDeviceCap,
+                                       i2c_driver,
+                                       I2CDeviceKey,
+                                       tempI2cCap,
+                                       /* address        */ 0x38,
+                                       /* opsMask         */ I2C_OP_READ |
+                                         I2C_OP_WRITE,
+                                       /* flags           */ 0,
+                                       /* maxTransferLen  */ 8,
+                                       /* maxLeaseMs      */ 0);
 
 static constexpr uint8_t KCmdInit[]    = {0xBE, 0x08, 0x00};
 static constexpr uint8_t KCmdTrigger[] = {0xAC, 0x33, 0x00};
@@ -38,7 +50,7 @@ static bool sInitialized = false;
 static int ensure_calibrated()
 {
 	uint8_t status = 0;
-	int     ret    = i2c_read(KAddr, &status, 1);
+	int     ret    = i2c_read(STATIC_SEALED_VALUE(tempI2cCap), &status, 1);
 	if (ret < 0)
 	{
 		return ret;
@@ -46,7 +58,8 @@ static int ensure_calibrated()
 	if (!(status & KStatusCalibrated))
 	{
 		Debug::log("AHT20 not calibrated, sending init command");
-		ret = i2c_write(KAddr, KCmdInit, sizeof(KCmdInit));
+		ret = i2c_write(
+		  STATIC_SEALED_VALUE(tempI2cCap), KCmdInit, sizeof(KCmdInit));
 		if (ret < 0)
 		{
 			return ret;
@@ -58,25 +71,18 @@ static int ensure_calibrated()
 
 static int do_measurement(uint8_t buf[6])
 {
-	// Trigger measurement
-	int ret = i2c_write(KAddr, KCmdTrigger, sizeof(KCmdTrigger));
+	I2CStep steps[3] = {
+	  {I2cWrite, sizeof(KCmdTrigger), 0, const_cast<uint8_t *>(KCmdTrigger)},
+	  {I2cDelay, 0, 85, nullptr}, // datasheet >=80 ms
+	  {I2cRead, 6, 0, buf},
+	};
+	Timeout t{UnlimitedTimeout};
+	int     ret = i2c_transact(STATIC_SEALED_VALUE(tempI2cCap), steps, 3, &t);
 	if (ret < 0)
 	{
-		Debug::log("AHT20 trigger failed: {}", ret);
+		Debug::log("AHT20 measurement transact failed: {}", ret);
 		return ret;
 	}
-
-	// Wait for measurement to complete (datasheet: >=80 ms)
-	thread_millisecond_wait(85);
-
-	// Read 6 bytes
-	ret = i2c_read(KAddr, buf, 6);
-	if (ret < 0)
-	{
-		Debug::log("AHT20 read failed: {}", ret);
-		return ret;
-	}
-
 	if (buf[0] & KStatusBusy)
 	{
 		Debug::log("AHT20 still busy after 85 ms");
