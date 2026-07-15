@@ -109,7 +109,7 @@ void __cheri_compartment("display") display_connected_network()
 	           Font::LucidaConsole_10pt);
 }
 
-// data_processing
+// core_logic
 
 void __cheri_compartment("display")
   display_sensor_readings(const SensorReading *reading)

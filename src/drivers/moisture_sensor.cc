@@ -67,6 +67,41 @@ int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *rawOut)
 	return 0;
 }
 
+// POC stand-in for moisture_read_raw(): no real sensor involved. Starts at
+// KFakeMoistureReset (~900), steps down by KFakeMoistureStep each call, and
+// resets once it crosses policy_engine's low threshold (kept in sync here as
+// KFakeMoistureLow) so the watering pulse (and its LED) can be observed
+// repeatedly without real hardware.
+static constexpr uint16_t KFakeMoistureReset = 900;
+static constexpr uint16_t KFakeMoistureStep  = 60;
+static constexpr uint16_t KFakeMoistureLow   = 300;
+
+static uint16_t sFakeMoisture = 310;
+
+int __cheri_compartment("moisture_sensor")
+  moisture_read_raw_mock(uint16_t *rawOut)
+{
+	if (!rawOut)
+	{
+		return -EINVAL;
+	}
+	*rawOut = sFakeMoisture;
+	Debug::log("Fake moisture reading: {}", sFakeMoisture);
+	// Reset only AFTER a reading has actually gone below the policy engine's
+	// threshold (strict "<"): resetting as soon as we reach the threshold
+	// value itself would never emit a value that trips policy_evaluate's
+	// `moistureRaw < sMoistureLow` check, so the pump/LED would never fire.
+	if (sFakeMoisture < KFakeMoistureLow)
+	{
+		sFakeMoisture = KFakeMoistureReset;
+	}
+	else
+	{
+		sFakeMoisture -= KFakeMoistureStep;
+	}
+	return 0;
+}
+
 int __cheri_compartment("moisture_sensor")
   moisture_read_percent(uint8_t *percentOut)
 {

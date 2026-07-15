@@ -3,39 +3,36 @@
 
 #include "policy_engine.h"
 #include "display/display_policy.h"
+#include "drivers/pump_driver.h"
 #include <debug.hh>
 #include <errno.h>
+#include <thread.h>
 
 using Debug = ConditionalDebug<true, "PlantNode Policy">;
 
 static uint16_t sMoistureLow  = 300;
 static uint16_t sMoistureHigh = 1500;
-static int16_t  sTempMaxCx10  = 280; // 40.0 °C
 
 PolicyOutcome __cheri_compartment("policy_engine")
-  policy_evaluate(const SensorReading *reading)
+  policy_evaluate(uint16_t moistureRaw, uint32_t timestamp)
 {
-	if (!reading || !reading->valid)
-	{
-		return PolicyOutcome::NoAction;
-	}
+	(void)timestamp; // not consulted by the current decision logic
 
-	if (reading->temperatureCx10 > sTempMaxCx10)
+	if (moistureRaw < sMoistureLow)
 	{
-		Debug::log("Temperature threshold exceeded: {} (max {})",
-		           reading->temperatureCx10,
-		           sTempMaxCx10);
-		return PolicyOutcome::TempAlert;
-	}
-
-	if (reading->moistureRaw < sMoistureLow)
-	{
-		Debug::log("Moisture too low ({}), activating pump.",
-		           reading->moistureRaw);
+		Debug::log("Moisture too low ({}), activating pump.", moistureRaw);
 		display_pump_activation(true);
-		// TODO: pump_on() for a short watering pulse (~2-3 s), then record the
-		// watering timestamp so we can throttle re-watering with a minimum
-		// interval instead of waiting for a high-moisture reading.
+		// Watering pulse: pump_on() is a placeholder (no relay pin wired yet,
+		// returns -ENOSYS) but does light an onboard LED as a POC. This call
+		// blocks the control_loop thread for ~2.5s while the pulse runs; see
+		// DESIGN.md for the tradeoff.
+		// TODO: once the relay pin exists, replace this blocking pulse with a
+		// non-blocking timer so watering doesn't stall the sense/policy
+		// cadence.
+		pump_on();
+		thread_millisecond_wait(2500);
+		pump_off();
+		display_pump_activation(false);
 		return PolicyOutcome::PumpActivation;
 	}
 
@@ -43,9 +40,7 @@ PolicyOutcome __cheri_compartment("policy_engine")
 }
 
 int __cheri_compartment("policy_engine")
-  policy_set_thresholds(uint16_t moistureLow,
-                        uint16_t moistureHigh,
-                        int16_t  tempMaxCx10)
+  policy_set_thresholds(uint16_t moistureLow, uint16_t moistureHigh)
 {
 	if (moistureLow >= moistureHigh)
 	{
@@ -54,6 +49,5 @@ int __cheri_compartment("policy_engine")
 
 	sMoistureLow  = moistureLow;
 	sMoistureHigh = moistureHigh;
-	sTempMaxCx10  = tempMaxCx10;
 	return 0;
 }
