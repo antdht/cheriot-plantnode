@@ -24,19 +24,14 @@ add_deps("freestanding", "debug", "lcd")
 
 compartment("core_logic")
 add_files("src/core_logic.cc")
-add_includedirs("src")
-add_deps("freestanding", "debug")
+add_includedirs("src", "../sonata-software/network-stack/include")
+add_deps("freestanding", "debug", "SNTP")
 
 compartment("comms")
 add_files("src/comms.cc")
 add_includedirs("src", "../sonata-software/network-stack/include", "../sonata-software/network-stack/examples/04.MQTT")
 add_deps("freestanding", "debug", "DNS", "TCPIP", "NetAPI", "TLS", "Firewall", "SNTP", "MQTT", "time_helpers", "stdio")
 add_rules("cheriot.network-stack.ipv6")
-
-compartment("data_processing")
-add_files("src/data_processing.cc")
-add_includedirs("src", "../sonata-software/network-stack/include")
-add_deps("freestanding", "debug", "time_helpers", "SNTP")
 
 compartment("policy_engine")
 add_files("src/policy_engine.cc")
@@ -67,8 +62,8 @@ add_deps("freestanding", "debug")
 
 compartment("control_loop")
 add_files("src/control_loop.cc")
-add_includedirs("src")
-add_deps("freestanding", "debug", "locks", "time_helpers")
+add_includedirs("src", "../sonata-software/network-stack/include")
+add_deps("freestanding", "debug", "locks", "time_helpers", "SNTP")
 
 -- Driver compartments
 
@@ -97,7 +92,7 @@ add_deps("freestanding", "debug")
 firmware("plantnode")
 add_deps("freestanding", "debug")
 -- Application
-add_deps("core_logic", "comms", "data_processing", "policy_engine", "attestation", "tpm", "crypto", "display", "control_loop")
+add_deps("core_logic", "comms", "policy_engine", "attestation", "tpm", "crypto", "display", "control_loop")
 -- Drivers
 add_deps("i2c_driver", "moisture_sensor", "temperature_sensor", "pump_driver")
 -- Network stack

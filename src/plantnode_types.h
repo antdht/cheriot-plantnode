@@ -28,7 +28,6 @@ enum class PolicyOutcome : uint8_t
 {
 	NoAction,
 	PumpActivation,
-	TempAlert,
 };
 
 /**

@@ -9,7 +9,7 @@
 /**
  * Driver for moisture sensor 1 on qwiic0 (I2C0).
  * Communicates with the sensor via the i2c_driver compartment.
- * Only data_processing is permitted to call this compartment.
+ * Only control_loop and core_logic are permitted to call this compartment.
  */
 
 /**

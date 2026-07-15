@@ -6,9 +6,13 @@
 #include "comms.h"
 #include "control_loop.h"
 #include "crypto.h"
+#include "display/display_data.h"
+#include "drivers/moisture_sensor.h"
+#include "drivers/temperature_sensor.h"
 #include "plantnode_types.h"
 #include <debug.hh>
 #include <fail-simulator-on-error.h>
+#include <sntp.h>
 #include <string.h>
 #include <string_view>
 #include <thread.h>
@@ -197,17 +201,32 @@ void __cheri_compartment("core_logic") telemetry_entry()
 		if (sAttested)
 		{
 			SensorReading reading{};
-			if (control_get_latest_reading(&reading) == 0)
+			int moistureRet = moisture_read_raw(&reading.moistureRaw);
+			int tempRet      = temperature_read_both(&reading.temperatureCx10,
+			                                     &reading.humidityRx10);
+			reading.valid    = (moistureRet == 0) && (tempRet == 0);
+
+			struct timeval tv;
+			reading.timestamp = (gettimeofday(&tv, nullptr) == 0)
+			                       ? static_cast<uint32_t>(tv.tv_sec)
+			                       : 0;
+			control_get_last_watering(&reading.lastWatering);
+
+			if (reading.valid)
 			{
 				int ret = comms_publish_telemetry(&reading);
 				if (ret != 0)
 				{
 					Debug::log("comms_publish_telemetry failed: {}", ret);
 				}
+				display_sensor_readings(&reading);
 			}
 			else
 			{
-				Debug::log("No reading yet; skipping telemetry tick");
+				Debug::log("Sensor read failed (moisture={}, temp={}); "
+				           "skipping telemetry tick",
+				           moistureRet,
+				           tempRet);
 			}
 		}
 		else
