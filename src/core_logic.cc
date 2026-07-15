@@ -201,15 +201,15 @@ void __cheri_compartment("core_logic") telemetry_entry()
 		if (sAttested)
 		{
 			SensorReading reading{};
-			int moistureRet = moisture_read_raw(&reading.moistureRaw);
-			int tempRet      = temperature_read_both(&reading.temperatureCx10,
-			                                     &reading.humidityRx10);
-			reading.valid    = (moistureRet == 0) && (tempRet == 0);
+			int moistureRet = moisture_read_raw_mock(&reading.moistureRaw);
+			int tempRet     = temperature_read_both(&reading.temperatureCx10,
+			                                        &reading.humidityRx10);
+			reading.valid   = (moistureRet == 0) && (tempRet == 0);
 
 			struct timeval tv;
 			reading.timestamp = (gettimeofday(&tv, nullptr) == 0)
-			                       ? static_cast<uint32_t>(tv.tv_sec)
-			                       : 0;
+			                      ? static_cast<uint32_t>(tv.tv_sec)
+			                      : 0;
 			control_get_last_watering(&reading.lastWatering);
 
 			if (reading.valid)
@@ -238,7 +238,7 @@ void __cheri_compartment("core_logic") telemetry_entry()
 		// and drain attestation responses so a reply is picked up within a poll
 		// interval rather than one per telemetry tick.
 		constexpr int PollIntervalMs = 250;
-		constexpr int PollsPerCycle  = 10000 / PollIntervalMs;
+		constexpr int PollsPerCycle  = 2500 / PollIntervalMs;
 		for (int i = 0; i < PollsPerCycle; i++)
 		{
 			comms_poll();

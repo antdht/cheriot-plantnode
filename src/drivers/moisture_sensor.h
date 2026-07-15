@@ -22,6 +22,20 @@
 int __cheri_compartment("moisture_sensor") moisture_read_raw(uint16_t *rawOut);
 
 /**
+ * POC stand-in for moisture_read_raw(): no real sensor read, returns a
+ * fake value that starts around 900 and decrements each call until it
+ * crosses the policy engine's low-moisture threshold, then resets to ~900 —
+ * lets the sense -> policy -> pump chain (and the pump-activation LED) be
+ * exercised without real hardware.
+ *
+ * @param raw_out  Populated with the fake raw value.
+ *
+ * Returns 0 on success, negative errno on failure.
+ */
+int __cheri_compartment("moisture_sensor")
+  moisture_read_raw_mock(uint16_t *rawOut);
+
+/**
  * Read the moisture level as a percentage (0–100).
  * Applies the stored calibration curve.
  *

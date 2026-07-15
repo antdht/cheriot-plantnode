@@ -19,8 +19,7 @@ namespace
 	uint32_t                  sLastWatering = 0; // most recent pump activation
 } // namespace
 
-int __cheri_compartment("control_loop")
-  control_get_last_watering(uint32_t *out)
+int __cheri_compartment("control_loop") control_get_last_watering(uint32_t *out)
 {
 	if (out == nullptr)
 	{
@@ -37,7 +36,9 @@ void __cheri_compartment("control_loop") control_entry()
 	while (true)
 	{
 		uint16_t moistureRaw = 0;
-		int      ret         = moisture_read_raw(&moistureRaw);
+		// POC: fake, self-decrementing reading (see moisture_read_raw_mock) so
+		// the watering pulse / LED can be exercised without real hardware.
+		int ret = moisture_read_raw_mock(&moistureRaw);
 		if (ret < 0)
 		{
 			Debug::log("Moisture read failed: {}", ret);
@@ -45,10 +46,9 @@ void __cheri_compartment("control_loop") control_entry()
 		else
 		{
 			struct timeval tv;
-			uint32_t       timestamp =
-			  (gettimeofday(&tv, nullptr) == 0)
-			    ? static_cast<uint32_t>(tv.tv_sec)
-			    : 0;
+			uint32_t       timestamp = (gettimeofday(&tv, nullptr) == 0)
+			                             ? static_cast<uint32_t>(tv.tv_sec)
+			                             : 0;
 
 			PolicyOutcome outcome = policy_evaluate(moistureRaw, timestamp);
 			switch (outcome)

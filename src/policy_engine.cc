@@ -3,8 +3,10 @@
 
 #include "policy_engine.h"
 #include "display/display_policy.h"
+#include "drivers/pump_driver.h"
 #include <debug.hh>
 #include <errno.h>
+#include <thread.h>
 
 using Debug = ConditionalDebug<true, "PlantNode Policy">;
 
@@ -20,9 +22,17 @@ PolicyOutcome __cheri_compartment("policy_engine")
 	{
 		Debug::log("Moisture too low ({}), activating pump.", moistureRaw);
 		display_pump_activation(true);
-		// TODO: pump_on() for a short watering pulse (~2-3 s), then record the
-		// watering timestamp so we can throttle re-watering with a minimum
-		// interval instead of waiting for a high-moisture reading.
+		// Watering pulse: pump_on() is a placeholder (no relay pin wired yet,
+		// returns -ENOSYS) but does light an onboard LED as a POC. This call
+		// blocks the control_loop thread for ~2.5s while the pulse runs; see
+		// DESIGN.md for the tradeoff.
+		// TODO: once the relay pin exists, replace this blocking pulse with a
+		// non-blocking timer so watering doesn't stall the sense/policy
+		// cadence.
+		pump_on();
+		thread_millisecond_wait(2500);
+		pump_off();
+		display_pump_activation(false);
 		return PolicyOutcome::PumpActivation;
 	}
 
