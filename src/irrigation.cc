@@ -19,7 +19,8 @@ namespace
 	uint32_t                  sLastWatering = 0; // most recent pump activation
 } // namespace
 
-int __cheri_compartment("irrigation") control_get_last_watering(uint32_t *out)
+int __cheri_compartment("irrigation")
+  irrigation_get_last_watering(uint32_t *out)
 {
 	if (out == nullptr)
 	{

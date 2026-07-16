@@ -11,4 +11,5 @@ void __cheri_compartment("irrigation") irrigation_loop();
 
 // Copy the most recent pump-activation timestamp into *out (0 = never
 // watered). Returns 0 on success, -EINVAL if out is null.
-int __cheri_compartment("irrigation") control_get_last_watering(uint32_t *out);
+int __cheri_compartment("irrigation")
+  irrigation_get_last_watering(uint32_t *out);

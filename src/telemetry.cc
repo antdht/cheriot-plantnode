@@ -210,7 +210,7 @@ void __cheri_compartment("telemetry") telemetry_loop()
 			reading.timestamp = (gettimeofday(&tv, nullptr) == 0)
 			                      ? static_cast<uint32_t>(tv.tv_sec)
 			                      : 0;
-			control_get_last_watering(&reading.lastWatering);
+			irrigation_get_last_watering(&reading.lastWatering);
 
 			if (reading.valid)
 			{
