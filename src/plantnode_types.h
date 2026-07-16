@@ -44,7 +44,7 @@ static constexpr size_t AttestationTokenLength = 32;
  * NOTE: this is mock data — see attestation.h. The token is an opaque blob: it
  * deliberately stands in for "whatever a real attestation would attach" without
  * modelling any particular measurement or signature scheme. Pointer-free plain
- * data, safe for cross-compartment transfer. core_logic reads these fields to
+ * data, safe for cross-compartment transfer. telemetry reads these fields to
  * build the plaintext JSON "am_i_attested" query on plantnode/attestation.
  */
 struct AttestationEvidence

@@ -1,14 +1,14 @@
 // Copyright CHERIoT Contributors.
 // SPDX-License-Identifier: MIT
 
-#include "core_logic.h"
+#include "telemetry.h"
 #include "attestation.h"
 #include "comms.h"
-#include "control_loop.h"
 #include "crypto.h"
 #include "display/display_data.h"
 #include "drivers/moisture_sensor.h"
 #include "drivers/temperature_sensor.h"
+#include "irrigation.h"
 #include "plantnode_types.h"
 #include <debug.hh>
 #include <fail-simulator-on-error.h>
@@ -30,8 +30,8 @@ namespace
 	// the device asks "am i attested?" and the verifier (charter) replies
 	// "yes". The cross-compartment call chain is kept intact and mocked end to
 	// end:
-	//   core_logic -> attestation (mock measure) -> tpm (mock sign) ->
-	//   core_logic
+	//   telemetry -> attestation (mock measure) -> tpm (mock sign) ->
+	//   telemetry
 	//   -> comms (publishes the JSON query).
 	// Telemetry stays gated: no sensor data leaves the device until the
 	// verifier confirms attestation.
@@ -40,8 +40,8 @@ namespace
 	// telemetry until this is set.
 	bool sAttested = false;
 
-	// Scratch buffers kept off the (small, TLS-shared) core_logic stack. Safe
-	// as statics: only the single core_logic thread touches them.
+	// Scratch buffers kept off the (small, TLS-shared) telemetry stack. Safe
+	// as statics: only the single telemetry thread touches them.
 	AttestationEvidence sEvidence;    // mock evidence gathered for each query
 	uint8_t             sReqBuf[256]; // JSON "am_i_attested" request to publish
 	uint8_t sRespBuf[256];            // most recent response drained from comms
@@ -155,7 +155,7 @@ namespace
 
 } // namespace
 
-void __cheri_compartment("core_logic") telemetry_entry()
+void __cheri_compartment("telemetry") telemetry_loop()
 {
 	Debug::log("=== PlantNode core starting ===");
 
@@ -196,7 +196,7 @@ void __cheri_compartment("core_logic") telemetry_entry()
 
 		// Publish telemetry (comms encrypts via crypto compartment), but only
 		// once the verifier has confirmed attestation. No sensor data leaves
-		// the device before then. Read latest reading from control_loop
+		// the device before then. Read latest reading from irrigation
 		// mailbox.
 		if (sAttested)
 		{

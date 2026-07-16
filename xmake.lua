@@ -22,8 +22,8 @@ add_deps("freestanding", "debug", "lcd")
 
 -- Application compartments
 
-compartment("core_logic")
-add_files("src/core_logic.cc")
+compartment("telemetry")
+add_files("src/telemetry.cc")
 add_includedirs("src", "../sonata-software/network-stack/include")
 add_deps("freestanding", "debug", "SNTP")
 
@@ -60,8 +60,8 @@ add_includedirs("src", "../cheriot-demos/third_party/crypto/libhydrogen")
 add_defines("CHERIOT_NO_AMBIENT_MALLOC")
 add_deps("freestanding", "debug")
 
-compartment("control_loop")
-add_files("src/control_loop.cc")
+compartment("irrigation")
+add_files("src/irrigation.cc")
 add_includedirs("src", "../sonata-software/network-stack/include")
 add_deps("freestanding", "debug", "locks", "time_helpers", "SNTP")
 
@@ -92,7 +92,7 @@ add_deps("freestanding", "debug")
 firmware("plantnode")
 add_deps("freestanding", "debug")
 -- Application
-add_deps("core_logic", "comms", "policy_engine", "attestation", "tpm", "crypto", "display", "control_loop")
+add_deps("telemetry", "comms", "policy_engine", "attestation", "tpm", "crypto", "display", "irrigation")
 -- Drivers
 add_deps("i2c_driver", "moisture_sensor", "temperature_sensor", "pump_driver")
 -- Network stack
@@ -121,18 +121,18 @@ on_load(function(target)
 	target:values_set("board", "sonata-1.1")
 	target:values_set("threads", {
 		{
-			compartment = "control_loop",
+			compartment = "irrigation",
 			priority = 3,
-			entry_point = "control_entry",
+			entry_point = "irrigation_loop",
 			stack_size = 4096,
 			trusted_stack_frames = 6,
 		},
 		{
 			-- Telemetry thread. Stack must cover the full
 			-- cross-compartment call chain incl. TLS in comms.
-			compartment = "core_logic",
+			compartment = "telemetry",
 			priority = 1,
-			entry_point = "telemetry_entry",
+			entry_point = "telemetry_loop",
 			stack_size = 8160,
 			trusted_stack_frames = 8,
 		},

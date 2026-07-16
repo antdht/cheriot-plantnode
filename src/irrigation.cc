@@ -1,6 +1,6 @@
 // Copyright CHERIoT Contributors.
 // SPDX-License-Identifier: MIT
-#include "control_loop.h"
+#include "irrigation.h"
 #include "drivers/moisture_sensor.h"
 #include "policy_engine.h"
 #include <debug.hh>
@@ -19,7 +19,7 @@ namespace
 	uint32_t                  sLastWatering = 0; // most recent pump activation
 } // namespace
 
-int __cheri_compartment("control_loop") control_get_last_watering(uint32_t *out)
+int __cheri_compartment("irrigation") control_get_last_watering(uint32_t *out)
 {
 	if (out == nullptr)
 	{
@@ -30,7 +30,7 @@ int __cheri_compartment("control_loop") control_get_last_watering(uint32_t *out)
 	return 0;
 }
 
-void __cheri_compartment("control_loop") control_entry()
+void __cheri_compartment("irrigation") irrigation_loop()
 {
 	Debug::log("=== PlantNode control loop starting (prio 3) ===");
 	while (true)

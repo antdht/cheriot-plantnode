@@ -82,12 +82,12 @@ constexpr std::string_view TopicPing{"plantnode/ping"};
 // Persistent MQTT state (private to this compartment)
 
 // The sealed MQTT handle never leaves this compartment.
-// core_logic holds no capability to it — it cannot publish directly.
+// telemetry holds no capability to it — it cannot publish directly.
 static MQTTConnection sHandle      = nullptr;
 static volatile int   sAckReceived = 0;
 
 // Single-slot buffer for the most recent decrypted remote-attestation message
-// received on plantnode/attestation. core_logic drains it via
+// received on plantnode/attestation. telemetry drains it via
 // comms_take_ra_message and runs the handshake state machine outside the MQTT
 // callback (avoiding re-entrant mqtt_run during a publish).
 static uint8_t       sRaBuf[256];

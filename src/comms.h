@@ -64,7 +64,7 @@ int __cheri_compartment("comms")
  * JSON response (carrying "attested") is buffered; the device's own echoed
  * request is filtered out. Returns 0 and sets *outLen when a message was
  * pending, -ENOENT when none is, negative errno on bad arguments. Called from
- * the core_logic loop, not from the MQTT callback.
+ * the telemetry loop, not from the MQTT callback.
  */
 int __cheri_compartment("comms")
   comms_take_ra_message(uint8_t *out, size_t *outLen);

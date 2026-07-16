@@ -14,7 +14,7 @@
  * attestation, so this compartment just gathers abstract "attestation evidence"
  * (the device id plus an opaque token from the mock tpm) instead of measuring
  * anything. It still calls into the (mock) tpm so the cross-compartment chain
- * core_logic -> attestation -> tpm is preserved.
+ * telemetry -> attestation -> tpm is preserved.
  *
  * It remains deliberately tiny and non-network-facing.
  */

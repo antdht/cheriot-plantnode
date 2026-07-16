@@ -24,7 +24,7 @@ PolicyOutcome __cheri_compartment("policy_engine")
 		display_pump_activation(true);
 		// Watering pulse: pump_on() is a placeholder (no relay pin wired yet,
 		// returns -ENOSYS) but does light an onboard LED as a POC. This call
-		// blocks the control_loop thread for ~2.5s while the pulse runs; see
+		// blocks the irrigation thread for ~2.5s while the pulse runs; see
 		// DESIGN.md for the tradeoff.
 		// TODO: once the relay pin exists, replace this blocking pulse with a
 		// non-blocking timer so watering doesn't stall the sense/policy

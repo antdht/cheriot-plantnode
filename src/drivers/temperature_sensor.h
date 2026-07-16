@@ -6,7 +6,7 @@
 // Adafruit AHT20 Temperature & Humidity sensor  (I2C address 0x38)
 // Both measurements come from the same 6-byte I2C transaction
 //
-// Only core_logic is permitted to call this compartment.
+// Only telemetry is permitted to call this compartment.
 
 #include <compartment.h>
 #include <stdint.h>

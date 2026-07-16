@@ -8,11 +8,11 @@
 #include <stdint.h>
 
 /**
- * tpm — MOCK API.
+ * tpm MOCK API.
  *
  * NOTE: this is NOT a real TPM and performs NO real cryptography. It is an
  * abstract stand-in for a secure element that "vouches" for the device, so the
- * attestation flow (core_logic -> attestation -> tpm) can be exercised end to
+ * attestation flow (telemetry -> attestation -> tpm) can be exercised end to
  * end without any real measurement or signing. The focus has moved off real
  * attestation; this just marks where a hardware root of trust would sit.
  *
