@@ -14,7 +14,7 @@
  * reached through a sealed I2CDeviceCap minted under the i2c_driver sealing key
  * "I2CDeviceKey" and granted (statically) to exactly one compartment. The
  * driver serialises the bus with a priority-inheriting bus lock and a
- * per-device reservation table; see DESIGN.md.
+ * per-device reservation table.
  */
 
 // Operation bits for I2CDeviceCap.opsMask.
