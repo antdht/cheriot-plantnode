@@ -28,6 +28,8 @@ static constexpr uint8_t KSeesawTouchCh0  = 0x10;
 
 // Capability granting THIS compartment access to the Seesaw soil sensor (0x36),
 // read+write, no lease. maxTransferLen 8 covers all its transfers.
+// maxBatchMs 20 covers the write+2ms-delay+read batch (~4ms worst case) with
+// headroom, while still bounding any hang to a small, fixed ceiling.
 DECLARE_AND_DEFINE_STATIC_SEALED_VALUE(struct I2CDeviceCap,
                                        i2c_driver,
                                        I2CDeviceKey,
@@ -37,6 +39,7 @@ DECLARE_AND_DEFINE_STATIC_SEALED_VALUE(struct I2CDeviceCap,
                                          I2C_OP_WRITE,
                                        /* flags           */ 0,
                                        /* maxTransferLen  */ 8,
+                                       /* maxBatchMs      */ 20,
                                        /* maxLeaseMs      */ 0);
 
 // Calibration end-points, adjust after measuring your sensor in dry/wet soil.

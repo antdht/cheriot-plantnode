@@ -30,6 +30,8 @@ struct I2CDeviceCap
 	uint8_t  opsMask;        // I2C_OP_READ | I2C_OP_WRITE
 	uint8_t  flags;          // I2C_MAY_LEASE
 	uint16_t maxTransferLen; // per-step byte cap (bounds head-of-line blocking)
+	uint16_t maxBatchMs;     // hard ceiling on any single i2c_transact's implicit
+	                         // reservation; must be nonzero (i2c_transact rejects 0)
 	uint32_t maxLeaseMs;     // hard auto-expiry ceiling for any lease
 };
 

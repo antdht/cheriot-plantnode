@@ -28,6 +28,8 @@
 using Debug = ConditionalDebug<true, "PlantNode Temp">;
 
 // Capability for the AHT20 (0x38), read+write, no lease. maxTransferLen 8.
+// maxBatchMs 150 covers the write+85ms-delay+read batch (~87ms worst case)
+// with headroom, while still bounding any hang to a small, fixed ceiling.
 DECLARE_AND_DEFINE_STATIC_SEALED_VALUE(struct I2CDeviceCap,
                                        i2c_driver,
                                        I2CDeviceKey,
@@ -37,6 +39,7 @@ DECLARE_AND_DEFINE_STATIC_SEALED_VALUE(struct I2CDeviceCap,
                                          I2C_OP_WRITE,
                                        /* flags           */ 0,
                                        /* maxTransferLen  */ 8,
+                                       /* maxBatchMs      */ 150,
                                        /* maxLeaseMs      */ 0);
 
 static constexpr uint8_t KCmdInit[]    = {0xBE, 0x08, 0x00};

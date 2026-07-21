@@ -60,7 +60,8 @@ namespace
 		bool     active;
 		uint8_t  address;
 		uint16_t owner;        // thread id
-		uint64_t deadlineTick; // 0 = until explicit release
+		uint64_t deadlineTick; // always nonzero: every claim (batch or lease) expires
+		bool     isLease;      // true only if claimed via i2c_lease_acquire
 	};
 	constexpr size_t          MaxReservations = 4;
 	Reservation               sReservations[MaxReservations];
@@ -81,7 +82,7 @@ namespace
 		bool changed = false;
 		for (auto &r : sReservations)
 		{
-			if (r.active && r.deadlineTick != 0 && now >= r.deadlineTick)
+			if (r.active && now >= r.deadlineTick)
 			{
 				r.active = false;
 				changed  = true;
@@ -107,10 +108,13 @@ namespace
 		return nullptr;
 	}
 
-	// Reserve `address` for this thread for `holdMs` (0 = batch span, released
-	// explicitly). Blocks (honouring `t`) while another thread owns it.
-	// Returns 0 on success, -ETIMEDOUT / -EBUSY on failure.
-	int reserve_device(uint8_t address, uint32_t holdMs, Timeout *t)
+	// Reserve `address` for this thread for `holdMs` (always > 0: every fresh
+	// claim now expires). `isLease` marks an explicit i2c_lease_acquire claim,
+	// as opposed to a bare batch's implicit reservation, so i2c_transact knows
+	// whether it must release at the end of its own step loop. Blocks
+	// (honouring `t`) while another thread owns it. Returns 0 on success,
+	// -ETIMEDOUT / -EBUSY on failure.
+	int reserve_device(uint8_t address, uint32_t holdMs, Timeout *t, bool isLease)
 	{
 		uint16_t me = thread_id_get();
 		while (true)
@@ -128,11 +132,11 @@ namespace
 					{
 						if (!slot.active)
 						{
-							slot.active  = true;
-							slot.address = address;
-							slot.owner   = me;
-							slot.deadlineTick =
-							  holdMs ? now + MS_TO_TICKS(holdMs) : 0;
+							slot.active       = true;
+							slot.address      = address;
+							slot.owner        = me;
+							slot.deadlineTick = now + MS_TO_TICKS(holdMs);
+							slot.isLease      = isLease;
 							return 0;
 						}
 					}
@@ -140,7 +144,7 @@ namespace
 				}
 				if (r->owner == me)
 				{
-					return 0; // re-entrant: already ours (lease held)
+					return 0; // re-entrant: already ours (batch or lease held)
 				}
 				gen = sReservationGen; // snapshot before sleeping
 			}
@@ -238,22 +242,27 @@ int __cheri_compartment("i2c_driver")
 		}
 	}
 
-	// Reserve the device for the batch span (re-entrant if a lease is held).
-	ret = reserve_device(cap.address, 0, t);
+	if (cap.maxBatchMs == 0)
+	{
+		return -EINVAL;
+	}
+	// Reserve the device for the batch span, bounded by maxBatchMs. Re-entrant
+	// if this thread already holds a lease on the device: reserve_device's
+	// owner==me branch returns without touching the existing deadline, so a
+	// lease holder's periodic batch polls ride the lease's own deadline
+	// instead of being re-bound to maxBatchMs on every call.
+	ret = reserve_device(cap.address, cap.maxBatchMs, t, /*isLease=*/false);
 	if (ret != 0)
 	{
 		return ret;
 	}
-	// Distinguish a caller-held lease from this batch's own span reservation:
-	// reserve_device with holdMs=0 leaves deadlineTick==0 and is re-entrant
-	// (returns 0 without touching an existing lease's deadlineTick). So a
-	// non-zero deadlineTick means the caller already holds a lease, which we
-	// must NOT release at the end of this batch.
+	// Only a lease's release must be left to the caller (i2c_lease_release);
+	// a bare batch's own reservation is released at the end of this function.
 	bool weHoldLease;
 	{
 		LockGuard    g{sReservationLock};
 		Reservation *r = find_locked(cap.address);
-		weHoldLease    = (r != nullptr && r->deadlineTick != 0);
+		weHoldLease    = (r != nullptr && r->isLease);
 	}
 
 	int result = 0;
@@ -368,7 +377,7 @@ int __cheri_compartment("i2c_driver")
 	{
 		return -EINVAL;
 	}
-	return reserve_device(cap.address, holdMs, t);
+	return reserve_device(cap.address, holdMs, t, /*isLease=*/true);
 }
 
 int __cheri_compartment("i2c_driver") i2c_lease_release(I2CDevice dev)
