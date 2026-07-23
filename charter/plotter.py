@@ -19,6 +19,11 @@ class PlotterQueue(TypedDict):
     y: float
 
 
+class PlotterEvent(TypedDict):
+    sender: str
+    x: datetime.datetime
+
+
 class Plotter:
     """
     Embed a real-time line plot into a Tkinter container.
@@ -37,6 +42,8 @@ class Plotter:
         y_label: str = "Value",
         title: Optional[str] = None,
         max_points: Optional[int] = None,
+        event_queue: Optional[Queue[PlotterEvent]] = None,
+        event_color: str = "darkblue",
     ) -> None:
         self.queue: Queue[PlotterQueue] = queue
         self.max_points = max_points
@@ -44,6 +51,13 @@ class Plotter:
         self.sender_data: dict[str, dict[str, list]] = {}
         self.sender_lines: dict[str, plt.Line2D] = {}
         self.sender_colors: dict[str, str] = {}
+
+        # Optional vertical marker lines (e.g. "watering happened here"),
+        # drawn once per event and never removed/redrawn afterwards.
+        self.event_queue: Optional[Queue[PlotterEvent]] = event_queue
+        self.event_color = event_color
+        self.drawn_event_count: dict[str, int] = {}
+        self.event_times: dict[str, list[datetime.datetime]] = {}
 
         self.fig, self.ax = plt.subplots()
         self.lines: list[plt.Line2D] = []
@@ -116,12 +130,36 @@ class Plotter:
                 d["x"] = d["x"][-self.max_points :]
                 d["y"] = d["y"][-self.max_points :]
 
+    def _draw_new_event_lines(self) -> None:
+        if self.event_queue is None:
+            return
+
+        while not self.event_queue.empty():
+            event = self.event_queue.get()
+            if not ("sender" in event and "x" in event):
+                continue
+            self.event_times.setdefault(event["sender"], []).append(event["x"])
+
+        for sender_id, times in self.event_times.items():
+            drawn = self.drawn_event_count.get(sender_id, 0)
+            for x in times[drawn:]:
+                self.ax.axvline(
+                    mdates.date2num(x),
+                    color=self.event_color,
+                    linestyle="--",
+                    linewidth=1.5,
+                    zorder=0,
+                )
+            self.drawn_event_count[sender_id] = len(times)
+
     def _update(self, frame: int) -> list[plt.Line2D]:
         while not self.queue.empty():
             point = self.queue.get()
             if not ("sender" in point and "x" in point and "y" in point):
                 continue
             self.store_data(point["sender"], point["x"], float(point["y"]))
+
+        self._draw_new_event_lines()
 
         for line in self.lines:
             line.remove()

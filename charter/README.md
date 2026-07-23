@@ -30,7 +30,7 @@ Key fields in `config.toml`:
 
 ```toml
 [mqtt]
-host = "mos.waos.space"   # broker hostname
+host = "node.antdht.be"   # broker hostname
 port = 8883               # TLS port
 ca-cert = "./keys/ca.crt" # path to broker CA certificate (see Certificates below)
 client-id = "charter"

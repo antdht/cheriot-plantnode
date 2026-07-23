@@ -14,8 +14,9 @@ from encryption import (
     recover_session_keys,
     decrypt_telemetry,
 )
+from commands import send_threshold_update
 from logger import CsvLogger
-from plotter import Plotter, PlotterQueue
+from plotter import Plotter, PlotterEvent, PlotterQueue
 from sensors import SensorPayload, SensorSession
 
 import cydrogen
@@ -28,6 +29,7 @@ class AppState:
     temperature_queue: Queue[PlotterQueue]
     humidity_queue: Queue[PlotterQueue]
     moisture_queue: Queue[PlotterQueue]
+    watering_queue: Queue[PlotterEvent]
     config: AppConfig
     logger: CsvLogger
     verifier_kp: cydrogen.KxPair
@@ -72,6 +74,22 @@ def handle_attestation_message(state: AppState, raw: bytes) -> None:
         state.mqtt_client.publish(
             _attestation_topic(state), build_response(request), qos=1
         )
+
+
+def make_threshold_handler(state: AppState, entry: tkinter.Entry):
+    def handler() -> None:
+        raw_value = entry.get().strip()
+        try:
+            threshold = int(raw_value)
+        except ValueError:
+            print(f"[commands] Invalid threshold value: {raw_value!r}")
+            return
+        if not (0 <= threshold <= 65535):
+            print(f"[commands] Threshold {threshold} out of range (must be 0-65535)")
+            return
+        send_threshold_update(state, threshold)
+
+    return handler
 
 
 def on_connect(
@@ -152,6 +170,7 @@ def on_message(
                     float(reading.last_watering)
                 )
                 print(f"[{device_id}] New watering detected at {watered_at}")
+                state.watering_queue.put({"sender": device_id, "x": watered_at})
             session.last_watering_seen = reading.last_watering
 
             state.logger.log(device_id, reading)
@@ -197,6 +216,22 @@ def init_tkinter(client: mqtt.Client) -> tkinter.Tk:
     return root
 
 
+def init_threshold_control(tk_root: tkinter.Tk, state: AppState) -> None:
+    frame = tkinter.Frame(tk_root)
+    frame.pack(side="bottom", fill="x", padx=8, pady=8)
+
+    tkinter.Label(frame, text="Watering threshold (raw moisture):").pack(
+        side="left"
+    )
+    entry = tkinter.Entry(frame, width=10)
+    entry.pack(side="left", padx=(4, 8))
+
+    button = tkinter.Button(
+        frame, text="Set threshold", command=make_threshold_handler(state, entry)
+    )
+    button.pack(side="left")
+
+
 def init_plotters(tk_root: tkinter.Tk, state: AppState) -> tuple[Plotter, ...]:
     left_frame = tkinter.Frame(tk_root)
     mid_frame = tkinter.Frame(tk_root)
@@ -231,6 +266,7 @@ def init_plotters(tk_root: tkinter.Tk, state: AppState) -> tuple[Plotter, ...]:
         y_label="Moisture (raw)",
         title="Moisture Over Time",
         max_points=max_pts,
+        event_queue=state.watering_queue,
     )
     return temp_plot, humidity_plot, moisture_plot
 
@@ -244,6 +280,7 @@ def main() -> None:
         temperature_queue=Queue(),
         humidity_queue=Queue(),
         moisture_queue=Queue(),
+        watering_queue=Queue(),
         config=config,
         logger=CsvLogger(config.logger.csv_file_name),
         verifier_kp=verifier_kp,
@@ -254,6 +291,7 @@ def main() -> None:
 
     tk_root = init_tkinter(client)
     init_plotters(tk_root, state)
+    init_threshold_control(tk_root, state)
 
     client.loop_start()
     tk_root.mainloop()

@@ -22,12 +22,21 @@ PolicyOutcome __cheri_compartment("policy_engine")
   policy_evaluate(uint16_t moistureRaw, uint32_t timestamp);
 
 /**
- * Update the decision thresholds used by the policy engine.
+ * Parse and apply a remote threshold-update command received on
+ * plantnode/commands (already decrypted by the caller).
  *
- * @param moisture_low   Moisture raw value below which the pump activates.
- * @param moisture_high  Moisture raw value above which the pump deactivates.
+ * Expected plaintext format (fixed key order, no other JSON accepted):
+ *   {"timestamp":<uint32>,"threshold":<uint16>}
  *
- * Returns 0 on success, negative errno on failure.
+ * The command is applied only if its timestamp is strictly newer than the
+ * last command this function applied; otherwise it is treated as stale or
+ * replayed and dropped without changing any state.
+ *
+ * @param packet     Decrypted plaintext bytes.
+ * @param packetLen  Length of packet, in bytes.
+ *
+ * Returns 0 if applied, -EINVAL if the packet is malformed or the threshold
+ * value is out of range, -EALREADY if the command was dropped as stale.
  */
 int __cheri_compartment("policy_engine")
-  policy_set_thresholds(uint16_t moistureLow, uint16_t moistureHigh);
+  policy_update_threshold(const uint8_t *packet, size_t packetLen);
