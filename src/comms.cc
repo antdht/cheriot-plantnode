@@ -5,6 +5,7 @@
 #include "crypto.h"
 #include "display/display_comms.h"
 #include "plantnode_types.h"
+#include "policy_engine.h"
 
 #include <NetAPI.h>
 #if __has_include(<allocator.h>)
@@ -31,7 +32,7 @@
 #ifdef MQTT_USE_LOCAL_BROKER
 #	include "local_ip.h"
 #	ifndef MQTT_LOCAL_BROKER_HOST
-#		define MQTT_LOCAL_BROKER_HOST "mos.waos.space"
+#		define MQTT_LOCAL_BROKER_HOST "node.antdht.be"
 #	endif
 #	ifndef MQTT_LOCAL_BROKER_PORT
 #		define MQTT_LOCAL_BROKER_PORT 8883
@@ -122,8 +123,11 @@ void __cheri_callback publish_callback(const char *topicName,
 
 	if (topic == TopicCommands)
 	{
-		// Reserved for a future remote-control feature, unrelated to
-		// attestation. Decrypt and drop for now.
+		// Remote threshold-update commands. Decrypt, then hand the plaintext
+		// to policy_engine, which parses it and decides whether to apply or
+		// drop it (stale/replayed timestamp). This is a synchronous,
+		// non-MQTT call, so — unlike the TopicAttestation path below — it is
+		// safe to make directly from inside this callback.
 		uint8_t plainBuf[256];
 		size_t  plainLen = 0;
 		int     ret      = crypto_decrypt(static_cast<const uint8_t *>(payload),
@@ -135,8 +139,21 @@ void __cheri_callback publish_callback(const char *topicName,
 			Debug::log("crypto_decrypt failed (err={})", ret);
 			return;
 		}
-		Debug::log("Decrypted command ({} bytes) - dispatch TODO", plainLen);
-		// TODO: parse and dispatch plaintext command to policy_engine
+		Debug::log("Decrypted command ({} bytes)", plainLen);
+
+		ret = policy_update_threshold(plainBuf, plainLen);
+		if (ret == 0)
+		{
+			Debug::log("Threshold command applied.");
+		}
+		else if (ret == -EALREADY)
+		{
+			Debug::log("Threshold command dropped (stale timestamp).");
+		}
+		else
+		{
+			Debug::log("Threshold command rejected (err={}).", ret);
+		}
 	}
 	else if (topic == TopicAttestation)
 	{
@@ -244,7 +261,7 @@ int __cheri_compartment("comms") comms_connect()
 			// DHCP not yet complete — wait before retrying
 			Debug::log("Network not up yet (ENOTCONN), waiting for DHCP...");
 			Timeout dhcpRetry{MS_TO_TICKS(3000)};
-			thread_sleep(&dhcpRetry);
+			thread_sleep(&dhcpRetry, ThreadSleepNoEarlyWake);
 		}
 		else
 		{

@@ -237,6 +237,11 @@ void __cheri_compartment("telemetry") telemetry_loop()
 		// Wait ~10 s until the next telemetry tick, but poll the network often
 		// and drain attestation responses so a reply is picked up within a poll
 		// interval rather than one per telemetry tick.
+		//
+		// ThreadSleepNoEarlyWake is required here: without it, thread_sleep()
+		// may return as soon as no other thread is runnable (see thread.h),
+		// which on this board happens constantly between network events and
+		// turns each "250 ms" sleep into a near-instant yield.
 		constexpr int PollIntervalMs = 250;
 		constexpr int PollsPerCycle  = 2500 / PollIntervalMs;
 		for (int i = 0; i < PollsPerCycle; i++)
@@ -245,7 +250,7 @@ void __cheri_compartment("telemetry") telemetry_loop()
 			drain_ra_messages();
 
 			Timeout t{MS_TO_TICKS(PollIntervalMs)};
-			thread_sleep(&t);
+			thread_sleep(&t, ThreadSleepNoEarlyWake);
 		}
 	}
 }

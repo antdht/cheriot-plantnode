@@ -34,6 +34,10 @@ int __cheri_compartment("irrigation")
 void __cheri_compartment("irrigation") irrigation_loop()
 {
 	Debug::log("=== PlantNode control loop starting (prio 3) ===");
+
+	Timeout t{MS_TO_TICKS(6000)};
+	thread_sleep(&t, ThreadSleepNoEarlyWake);
+
 	while (true)
 	{
 		uint16_t moistureRaw = 0;
@@ -68,9 +72,7 @@ void __cheri_compartment("irrigation") irrigation_loop()
 			}
 		}
 
-		// Control cadence: faster than telemetry; loop sleeps (yields CPU to
-		// the network stack) between ticks.
 		Timeout t{MS_TO_TICKS(6000)};
-		thread_sleep(&t);
+		thread_sleep(&t, ThreadSleepNoEarlyWake);
 	}
 }
