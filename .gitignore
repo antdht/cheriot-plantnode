@@ -43,6 +43,7 @@
 # CHERIoT-specific
 .xmake/*
 build/*
+compile_commands.json
 
 # Git worktrees
 .worktrees/
