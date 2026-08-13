@@ -206,6 +206,7 @@ def init_mqtt(state: AppState) -> mqtt.Client:
 def init_tkinter(client: mqtt.Client) -> tkinter.Tk:
     root = tkinter.Tk()
     root.title("PlantNode — Real-time Sensor Data")
+    root.configure(bg=GRAPH_BACKGROUND)
 
     def on_closing() -> None:
         client.loop_stop()
@@ -216,18 +217,26 @@ def init_tkinter(client: mqtt.Client) -> tkinter.Tk:
     return root
 
 
+GRAPH_BACKGROUND = "white"  # matches matplotlib's default figure/axes facecolor
+
+
 def init_threshold_control(tk_root: tkinter.Tk, state: AppState) -> None:
-    frame = tkinter.Frame(tk_root)
+    frame = tkinter.Frame(tk_root, bg=GRAPH_BACKGROUND)
     frame.pack(side="bottom", fill="x", padx=8, pady=8)
 
-    tkinter.Label(frame, text="Watering threshold (raw moisture):").pack(
-        side="left"
-    )
+    tkinter.Label(
+        frame, text="Watering threshold (raw moisture):", bg=GRAPH_BACKGROUND
+    ).pack(side="left")
     entry = tkinter.Entry(frame, width=10)
     entry.pack(side="left", padx=(4, 8))
 
     button = tkinter.Button(
-        frame, text="Set threshold", command=make_threshold_handler(state, entry)
+        frame,
+        text="Set threshold",
+        command=make_threshold_handler(state, entry),
+        bg=GRAPH_BACKGROUND,
+        activebackground=GRAPH_BACKGROUND,
+        highlightbackground=GRAPH_BACKGROUND,
     )
     button.pack(side="left")
 
@@ -290,8 +299,8 @@ def main() -> None:
     state.mqtt_client = client
 
     tk_root = init_tkinter(client)
-    init_plotters(tk_root, state)
     init_threshold_control(tk_root, state)
+    init_plotters(tk_root, state)
 
     client.loop_start()
     tk_root.mainloop()
