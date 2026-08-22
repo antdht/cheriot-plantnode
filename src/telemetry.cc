@@ -159,7 +159,16 @@ void __cheri_compartment("telemetry") telemetry_loop()
 {
 	Debug::log("=== PlantNode core starting ===");
 
-	comms_connect();
+	// MQTT must be up before anything else runs (key exchange, attestation,
+	// telemetry all depend on a live broker connection). Keep retrying until
+	// it succeeds instead of falling through to attestation on a dead link.
+	int connectRet;
+	while ((connectRet = comms_connect()) != 0)
+	{
+		Debug::log("comms_connect failed (err={}), retrying...", connectRet);
+		Timeout retryDelay{MS_TO_TICKS(3000)};
+		thread_sleep(&retryDelay, ThreadSleepNoEarlyWake);
+	}
 
 	// Key distribution (one-time at startup)
 	// Perform Noise-N step 1: derive session TX/RX keys and publish packet1
